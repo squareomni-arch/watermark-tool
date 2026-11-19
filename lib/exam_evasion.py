@@ -35,6 +35,17 @@ EXTENDED_STARTUPINFO_PRESENT = 0x00080000
 CREATE_NO_WINDOW = 0x08000000
 PROC_THREAD_ATTRIBUTE_PARENT_PROCESS = 0x00020000
 
+WDA_EXCLUDEFROMCAPTURE = 0x00000011
+
+GWL_STYLE = -16
+GWL_EXSTYLE = -20
+WS_POPUP = 0x80000000
+WS_CHILD = 0x40000000
+WS_EX_TOPMOST = 0x00000008
+
+SM_CXSCREEN = 0
+SM_CYSCREEN = 1
+
 MAX_PATH = 260
 
 
@@ -161,6 +172,22 @@ def _load_libs():
         wintypes.HWND, wintypes.LPWSTR, ctypes.c_int
     ]
 
+    user32.GetClassNameW.restype = ctypes.c_int
+    user32.GetClassNameW.argtypes = [
+        wintypes.HWND, wintypes.LPWSTR, ctypes.c_int
+    ]
+
+    user32.GetWindowLongPtrW.restype = ctypes.c_ssize_t
+    user32.GetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int]
+
+    user32.GetSystemMetrics.restype = ctypes.c_int
+    user32.GetSystemMetrics.argtypes = [ctypes.c_int]
+
+    user32.GetWindowDisplayAffinity.restype = wintypes.BOOL
+    user32.GetWindowDisplayAffinity.argtypes = [
+        wintypes.HWND, ctypes.POINTER(wintypes.DWORD)
+    ]
+
     return kernel32, user32
 
 
@@ -217,6 +244,109 @@ def find_window_for_process(pid: int) -> Optional[int]:
 
     USER32.EnumWindows(_enum, 0)
     return best_hwnd
+
+
+def find_exam_window() -> Optional[Tuple[int, int, str]]:
+    """Tìm cửa sổ app thi đang chạy kiosk mà KHÔNG phụ thuộc vào tên exe.
+
+    Trả về (hwnd, pid, reason) nếu tìm thấy.
+
+    Heuristic:
+      - WDA_EXCLUDEFROMCAPTURE: ExamLockdown (và nhiều app thi khác) bật flag này
+        ngay khi vào kiosk. Đây là tín hiệu mạnh nhất, độc lập với tên exe.
+      - Cửa sổ phủ gần toàn màn hình + WS_EX_TOPMOST + WS_POPUP (borderless kiosk):
+        vẫn nhận diện được sau khi tool tắt WDA để chụp màn hình.
+      - Title/class chứa "ExamLockdown" hoặc class WPF "HwndWrapper": tăng độ tin cậy.
+    """
+    screen_w = max(1, int(USER32.GetSystemMetrics(SM_CXSCREEN)))
+    screen_h = max(1, int(USER32.GetSystemMetrics(SM_CYSCREEN)))
+    screen_area = screen_w * screen_h
+
+    best: Optional[Tuple[int, int, str]] = None
+    best_score = 0
+
+    @WNDENUMPROC
+    def _enum(hwnd, _lparam):
+        nonlocal best, best_score
+        if not USER32.IsWindowVisible(hwnd):
+            return True
+
+        rect = RECT()
+        if not USER32.GetWindowRect(hwnd, ctypes.byref(rect)):
+            return True
+        width = int(rect.right - rect.left)
+        height = int(rect.bottom - rect.top)
+        if width <= 0 or height <= 0:
+            return True
+
+        pid = wintypes.DWORD()
+        USER32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if int(pid.value) <= 0:
+            return True
+
+        title_buf = ctypes.create_unicode_buffer(512)
+        USER32.GetWindowTextW(hwnd, title_buf, len(title_buf))
+        title = title_buf.value.strip().lower()
+
+        class_buf = ctypes.create_unicode_buffer(256)
+        USER32.GetClassNameW(hwnd, class_buf, len(class_buf))
+        class_name = class_buf.value.lower()
+
+        style = int(USER32.GetWindowLongPtrW(hwnd, GWL_STYLE))
+        exstyle = int(USER32.GetWindowLongPtrW(hwnd, GWL_EXSTYLE))
+
+        # EnumWindows đã loại child window; nhưng giữ guard phòng thân.
+        if style & WS_CHILD:
+            return True
+
+        score = 0
+        reasons = []
+
+        affinity = wintypes.DWORD()
+        if USER32.GetWindowDisplayAffinity(hwnd, ctypes.byref(affinity)):
+            if int(affinity.value) == WDA_EXCLUDEFROMCAPTURE:
+                score += 100
+                reasons.append("WDA_EXCLUDEFROMCAPTURE")
+
+        area = width * height
+        coverage = area / screen_area
+        if coverage >= 0.80:
+            score += 45
+            reasons.append(f"fullscreen:{coverage:.0%}")
+        elif coverage >= 0.60:
+            score += 25
+
+        if exstyle & WS_EX_TOPMOST:
+            score += 20
+            reasons.append("topmost")
+
+        if style & WS_POPUP:
+            score += 15
+            reasons.append("popup")
+
+        # WPF cửa sổ kiosk thường có class dạng HwndWrapper[...].
+        if "hwndwrapper" in class_name:
+            score += 20
+            reasons.append("wpf")
+
+        if "examlockdown" in title or "examlockdown" in class_name:
+            score += 120
+            reasons.append("examlockdown")
+
+        # WDA_EXCLUDEFROMCAPTURE hoặc marker ExamLockdown => chắc chắn là app thi.
+        # Không có hai tín hiệu đó thì bắt buộc phải là fullscreen borderless
+        # topmost WPF để tránh nhầm trình duyệt/video fullscreen.
+        if score < 85:
+            return True
+
+        if score > best_score:
+            best_score = score
+            best = (int(hwnd), int(pid.value), ", ".join(reasons) or f"score:{score}")
+
+        return True
+
+    USER32.EnumWindows(_enum, 0)
+    return best
 
 
 def spawn_as_child_of(parent_pid: int, extra_argv: Optional[List[str]] = None) -> int:

@@ -1,5 +1,5 @@
 {
-  "version": "1.1.5",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.5/watermark-tool-1.1.5.zip",
-  "notes": "Giữ watermark đúng vị trí khi cửa sổ ExamLockdown chuyển kiosk / resize"
+  "version": "1.1.6",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.6/watermark-tool-1.1.6.zip",
+  "notes": "Phat hien app thi bang WDA/fullscreen kiosk, khong phu thuoc ten exe"
 }

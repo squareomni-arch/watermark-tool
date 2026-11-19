@@ -16,8 +16,6 @@ from .capslock_trigger import CapsLockTrigger
 from .gemini_helper import GeminiHelper, ScreenCaptureBlockedError
 from .overlay import WatermarkOverlay
 
-EXAM_PROCESS_NAME = "ExamLockdown.App.exe"
-
 
 def log(message: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {message}", flush=True)
@@ -99,29 +97,33 @@ class StealthHelperApp:
         self._exam_watch_thread.start()
 
     def _exam_watch_loop(self) -> None:
-        from .exam_evasion import (
-            find_process_by_name,
-            find_window_for_process,
-            spawn_as_child_of,
-        )
+        from .exam_evasion import find_exam_window, spawn_as_child_of
 
         pid_file = Path(__file__).resolve().parent.parent / "data" / "stealth_helper.pid"
+        last_exam_pid: Optional[int] = None
 
         while self._running:
             try:
-                exam_pid = find_process_by_name(EXAM_PROCESS_NAME)
-                if exam_pid is None:
+                found = find_exam_window()
+                if found is None:
+                    if last_exam_pid is not None:
+                        last_exam_pid = None
+                        log("[EVADE] App thi đã thoát, trả watermark về chế độ thường.")
                     # App thi đã thoát -> trả watermark về top-level để hiển thị ngoài desktop.
                     if self.overlay is not None and self.overlay.is_child:
                         self.overlay.detach_from_parent()
                     time.sleep(0.15)
                     continue
 
-                exam_hwnd = find_window_for_process(exam_pid)
-                if exam_hwnd and self.overlay is not None:
+                exam_hwnd, exam_pid, reason = found
+                if exam_pid != last_exam_pid:
+                    log(f"[EVADE] Phát hiện app thi không cần biết tên exe: hwnd={exam_hwnd}, pid={exam_pid}, lý do={reason}.")
+                    last_exam_pid = exam_pid
+
+                if self.overlay is not None:
                     self.overlay.attach_to(exam_hwnd)
 
-                # Process hiện tại chưa phải process con của ExamLockdown.
+                # Process hiện tại chưa phải process con của app thi.
                 # Tự chạy lại main.py dưới dạng process con, rồi process cũ thoát.
                 # Process con + overlay dạng child window sẽ nằm trong danh sách
                 # miễn trừ của ExamLockdown.
@@ -138,7 +140,7 @@ class StealthHelperApp:
                                 pid_file.unlink()
 
                         child_pid = spawn_as_child_of(exam_pid)
-                        log(f"[EVADE] Đã chạy lại dưới dạng process con của ExamLockdown (pid {child_pid}).")
+                        log(f"[EVADE] Đã chạy lại dưới dạng process con của app thi (pid {child_pid}).")
                         self._relaunching = True
                         self._running = False
                         return
