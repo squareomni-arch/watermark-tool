@@ -14,6 +14,7 @@ import base64
 import io
 import json
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -34,9 +35,10 @@ DEFAULT_PROMPT = (
     "Ảnh chụp màn hình máy tính sẽ được cung cấp riêng."
     " Nhiệm vụ duy nhất của bạn: đọc văn bản TRONG ẢNH,"
     " không trả lời câu hỏi trong hướng dẫn này."
-    " Nếu trong ảnh có câu hỏi, hãy trả lời ngắn gọn chính xác,"
-    " tối đa 15 từ, tiếng Việt, một dòng."
-    " Nếu trong ảnh không có câu hỏi nào, chỉ xuất đúng một từ NO_QUESTION."
+    " Nếu trong ảnh có câu hỏi hoặc bài tập điền từ/chỗ trống cần trả lời,"
+    " hãy trả lời ngắn gọn chính xác, tối đa 15 từ, tiếng Việt, một dòng."
+    " Nếu trong ảnh không có câu hỏi hoặc bài tập cần trả lời,"
+    " chỉ xuất đúng một từ NO_QUESTION."
     " Không giới thiệu bản thân, không thêm lời dẫn."
 )
 
@@ -72,13 +74,27 @@ class GeminiHelper:
         except (TypeError, ValueError):
             self.max_attempts = 2
 
+        try:
+            self.retries_per_model = max(1, int(settings.get("retries_per_model", 1)))
+        except (TypeError, ValueError):
+            self.retries_per_model = 1
+
+        try:
+            self.max_image_dimension = max(640, int(settings.get("max_image_dimension", 1920)))
+        except (TypeError, ValueError):
+            self.max_image_dimension = 1920
+
         self.available = bool(self.api_key)
 
     # ------------------------------------------------------------------ chụp ảnh
     def _capture_screen_as_jpeg_b64(self) -> Optional[str]:
-        """Chụp màn hình chính và trả về ảnh JPEG dạng base64."""
+        """Chụp màn hình chính, nén nhỏ và trả về ảnh JPEG dạng base64.
+
+        Ảnh to (4K/Retina) là nguyên nhân phổ biến khiến Gemini timeout. Ta
+        giữ nguyên tỉ lệ nhưng giới hạn chiều dài cạnh dài để request nhanh hơn.
+        """
         try:
-            from PIL import ImageGrab
+            from PIL import Image, ImageGrab
         except ImportError:
             print(
                 "[ERROR] Chưa cài thư viện Pillow. "
@@ -87,9 +103,21 @@ class GeminiHelper:
             return None
 
         try:
-            image = ImageGrab.grab()
+            image = ImageGrab.grab().convert("RGB")
+
+            width, height = image.size
+            max_side = max(width, height)
+            if max_side > self.max_image_dimension:
+                scale = self.max_image_dimension / max_side
+                new_size = (max(1, int(width * scale)), max(1, int(height * scale)))
+                try:
+                    resampling = Image.Resampling.LANCZOS
+                except AttributeError:
+                    resampling = Image.LANCZOS  # type: ignore[attr-defined]
+                image = image.resize(new_size, resampling)
+
             buffer = io.BytesIO()
-            image.convert("RGB").save(buffer, format="JPEG", quality=80)
+            image.save(buffer, format="JPEG", quality=78, optimize=True)
             return base64.b64encode(buffer.getvalue()).decode("ascii")
         except Exception as exc:
             print(f"[ERROR] Không chụp được màn hình: {exc}")
@@ -109,9 +137,14 @@ class GeminiHelper:
         models = models[: self.max_attempts]
 
         for model in models:
-            answer = self._generate_with_model(model, image_b64)
-            if answer is not None:
-                return answer
+            for attempt in range(1, self.retries_per_model + 1):
+                answer = self._generate_with_model(model, image_b64)
+                if answer is not None:
+                    return answer
+                if attempt < self.retries_per_model:
+                    print(f"[AI] Model '{model}' lần {attempt} không được, thử lại...")
+                    time.sleep(0.6)
+
             print(f"[AI] Model '{model}' không trả được kết quả, thử model khác...")
 
         return None

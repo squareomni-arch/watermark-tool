@@ -75,6 +75,8 @@ def migrate_runtime_config(config: dict) -> dict:
         ],
         "timeout": 12,
         "max_attempts": 2,
+        "retries_per_model": 1,
+        "max_image_dimension": 1920,
     }
 
     for key, value in defaults.items():
