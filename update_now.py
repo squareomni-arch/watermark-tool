@@ -25,6 +25,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
+import traceback
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -48,6 +50,19 @@ PROTECTED_RELATIVE_PATHS = {
 }
 
 SKIPPED_DIR_NAMES = {"__pycache__", ".git", "dist", "build", "venv", ".venv"}
+
+LOG_FILE = BASE_DIR / "data" / "update_now.log"
+
+
+def _write_log(message: str) -> None:
+    try:
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(LOG_FILE, "a", encoding="utf-8") as handle:
+            handle.write(
+                f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {message}\n"
+            )
+    except OSError:
+        pass
 
 
 def fetch_json(url: str) -> dict:
@@ -239,9 +254,12 @@ def main() -> int:
         print("Đang khởi động lại app...")
         relaunch_app()
         print("Xong. Hãy bật CapsLock để test.")
+        _write_log(f"Cập nhật thành công lên v{version}")
         return 0
     except Exception as exc:
         print(f"[ERROR] Cập nhật thất bại: {exc}")
+        traceback.print_exc()
+        _write_log(f"Cập nhật thất bại: {exc}")
         return 1
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
