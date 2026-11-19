@@ -94,6 +94,9 @@ class StealthHelperApp:
                 self.overlay.show("Lỗi AI")
             elif answer.strip().upper().startswith("NO_QUESTION"):
                 self.overlay.show("Không thấy câu hỏi")
+            elif answer.strip().lower().startswith(("tôi là trợ lý", "tôi là ai", "tôi là gemini")):
+                # Một số model cũ trả lời nhầm câu lệnh hệ thống thay vì đọc ảnh.
+                self.overlay.show("Không thấy câu hỏi")
             else:
                 self.overlay.show(answer[:120])
             return

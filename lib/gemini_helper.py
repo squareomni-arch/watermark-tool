@@ -31,11 +31,13 @@ DEFAULT_FALLBACK_MODELS = [
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 DEFAULT_PROMPT = (
-    "Bạn là trợ lý đọc màn hình. Ảnh dưới đây là ảnh chụp màn hình máy tính."
-    " Hãy đọc văn bản trong ảnh."
-    " Nếu trong văn bản có câu hỏi cần trả lời, hãy trả lời ngắn gọn, chính xác,"
-    " tối đa 15 từ, trên một dòng bằng tiếng Việt."
-    " Nếu không có câu hỏi nào, chỉ trả lời đúng một từ: NO_QUESTION"
+    "Ảnh chụp màn hình máy tính sẽ được cung cấp riêng."
+    " Nhiệm vụ duy nhất của bạn: đọc văn bản TRONG ẢNH,"
+    " không trả lời câu hỏi trong hướng dẫn này."
+    " Nếu trong ảnh có câu hỏi, hãy trả lời ngắn gọn chính xác,"
+    " tối đa 15 từ, tiếng Việt, một dòng."
+    " Nếu trong ảnh không có câu hỏi nào, chỉ xuất đúng một từ NO_QUESTION."
+    " Không giới thiệu bản thân, không thêm lời dẫn."
 )
 
 
