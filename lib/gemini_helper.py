@@ -26,8 +26,8 @@ DEFAULT_MODEL = "gemini-3.1-flash-lite"
 # Nếu model chính bận / không còn được hỗ trợ thì thử lần lượt các model này.
 # Chỉ nên để các model nhỏ, phản hồi nhanh; không bỏ model nặng vào đây.
 DEFAULT_FALLBACK_MODELS = [
-    "gemini-flash-lite-latest",
     "gemini-3.5-flash-lite",
+    "gemini-flash-lite-latest",
 ]
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 

@@ -70,8 +70,8 @@ def migrate_runtime_config(config: dict) -> dict:
     defaults = {
         "model": "gemini-3.1-flash-lite",
         "fallback_models": [
-            "gemini-flash-lite-latest",
             "gemini-3.5-flash-lite",
+            "gemini-flash-lite-latest",
         ],
         "timeout": 12,
         "max_attempts": 2,
