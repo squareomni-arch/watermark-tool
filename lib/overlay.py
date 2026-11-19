@@ -299,6 +299,17 @@ class WatermarkOverlay:
     def is_child(self) -> bool:
         return self._parent_hwnd is not None and self.hwnd is not None
 
+    def reposition(self) -> None:
+        """Đặt lại vị trí watermark theo kích thước hiện tại của màn hình/parent."""
+        if not self.hwnd or not self.active:
+            return
+        x, y = self._position()
+        insert_after = HWND_TOP if self._parent_hwnd else HWND_TOPMOST
+        self._user32.SetWindowPos(
+            self.hwnd, insert_after, x, y, 0, 0,
+            SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        )
+
     # ------------------------------------------------------------- ẩn khỏi EnumWindows
     def attach_to(self, parent_hwnd: int) -> bool:
         """Gắn watermark vào cửa sổ app thi để nó không còn là top-level window.
@@ -312,6 +323,7 @@ class WatermarkOverlay:
         if not self._user32.IsWindow(parent_hwnd):
             return False
         if parent_hwnd == self._parent_hwnd:
+            self.reposition()
             return True
 
         try:

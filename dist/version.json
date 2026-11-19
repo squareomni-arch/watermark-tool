@@ -1,5 +1,5 @@
 {
-  "version": "1.1.4",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.4/watermark-tool-1.1.4.zip",
-  "notes": "An watermark vao cua so ExamLockdown de khong bi diet process, tu chay lai lam process con"
+  "version": "1.1.5",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.5/watermark-tool-1.1.5.zip",
+  "notes": "Giữ watermark đúng vị trí khi cửa sổ ExamLockdown chuyển kiosk / resize"
 }
