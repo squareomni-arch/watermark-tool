@@ -54,6 +54,53 @@ def load_config() -> dict:
     return {}
 
 
+def migrate_runtime_config(config: dict) -> dict:
+    """Tự sửa những cấu hình AI cũ / chậm đã biết, giữ nguyên API key.
+
+    Mục đích: bản mới vẫn chạy tốt dù người dùng có file config.json cũ.
+    """
+    changed = False
+
+    features = config.setdefault("features", {})
+    if "ai" not in features:
+        features["ai"] = True
+        changed = True
+
+    gemini = config.setdefault("gemini", {})
+    defaults = {
+        "model": "gemini-3.1-flash-lite",
+        "fallback_models": [
+            "gemini-flash-lite-latest",
+            "gemini-3.5-flash-lite",
+        ],
+        "timeout": 12,
+        "max_attempts": 2,
+    }
+
+    for key, value in defaults.items():
+        if gemini.get(key) != value:
+            gemini[key] = value
+            changed = True
+
+    # Luôn giữ API key cũ; nếu chưa có thì dùng biến môi trường.
+    if not gemini.get("api_key"):
+        env_key = os.environ.get("GEMINI_API_KEY", "").strip()
+        if env_key:
+            gemini["api_key"] = env_key
+            changed = True
+
+    if changed:
+        try:
+            CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with open(CONFIG_PATH, "w", encoding="utf-8") as handle:
+                json.dump(config, handle, ensure_ascii=False, indent=4)
+            print("[CẤU HÌNH] Đã cập nhật cấu hình AI để tăng tốc độ.")
+        except OSError as exc:
+            print(f"[CẢNH BÁO] Không ghi được {CONFIG_PATH}: {exc}")
+
+    return config
+
+
 def set_console_title(title: str = "Stealth Helper") -> None:
     try:
         import ctypes
@@ -150,7 +197,7 @@ def main() -> int:
         print(f"[ERROR] App chỉ hỗ trợ Windows (nền tảng hiện tại: {sys.platform}).")
         return 1
 
-    config = load_config()
+    config = migrate_runtime_config(load_config())
 
     if not _acquire_pid_file():
         print("[WARNING] Stealth Helper đang chạy rồi. Không mở thêm bản nữa.")

@@ -1,5 +1,5 @@
 {
-  "version": "1.0.8",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.0.8/watermark-tool-1.0.8.zip",
-  "notes": "Updater lay release moi nhat qua GitHub API, khong bi cache tre nhu raw/jsDelivr"
+  "version": "1.0.9",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.0.9/watermark-tool-1.0.9.zip",
+  "notes": "Tu sua config cu: doi model AI nhanh, gioi han timeout, tu bao ton API key"
 }
