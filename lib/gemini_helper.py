@@ -14,6 +14,7 @@ import base64
 import io
 import json
 import os
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -149,6 +150,26 @@ class GeminiHelper:
         except Exception:
             return False
 
+    @staticmethod
+    def _unlock_excluded_from_capture() -> bool:
+        """Tắt WDA_EXCLUDEFROMCAPTURE của các cửa sổ khác (best-effort).
+
+        Nếu ảnh chụp bị đen do app thi tự bật WDA_EXCLUDEFROMCAPTURE, ta cần
+        tiêm shellcode vào process đó để gọi SetWindowDisplayAffinity(WDA_NONE).
+        Trả về True nếu có ít nhất một cửa sổ được mở khoá.
+        """
+        if not sys.platform.startswith("win"):
+            return False
+
+        try:
+            from .wda_unlock import unlock_all_excluded_windows
+
+            unlocked = unlock_all_excluded_windows(quiet=True)
+            return bool(unlocked)
+        except Exception as exc:
+            print(f"[WARNING] Không tắt được WDA_EXCLUDEFROMCAPTURE: {exc}")
+            return False
+
     def _capture_screen_as_jpeg_b64(self, detailed: bool = False) -> Optional[str]:
         """Chụp màn hình chính, nén nhỏ và trả về ảnh JPEG dạng base64.
 
@@ -168,6 +189,10 @@ class GeminiHelper:
             )
             return None
 
+        # Trước khi chụp, chủ động tắt WDA_EXCLUDEFROMCAPTURE của các cửa sổ
+        # đang chặn capture (nếu tool chạy trên Windows và có đủ quyền).
+        self._unlock_excluded_from_capture()
+
         try:
             try:
                 image = ImageGrab.grab()
@@ -184,6 +209,17 @@ class GeminiHelper:
 
             image = image.convert("RGB")
             if self._is_black_screenshot(image):
+                # WDA_EXCLUDEFROMCAPTURE có thể được app target bật lại ngay
+                # trước lúc ta chụp. Thử tắt flag thêm lần nữa rồi chụp lại.
+                if self._unlock_excluded_from_capture():
+                    try:
+                        image = ImageGrab.grab()
+                    except OSError:
+                        image = None
+                    if image is not None:
+                        image = image.convert("RGB")
+
+            if image is None or self._is_black_screenshot(image):
                 raise ScreenCaptureBlockedError(
                     "Ảnh chụp bị đen hoàn toàn. Nội dung có thể đang bị Windows"
                     " chặn chụp (secure desktop, DRM, game hoặc video có bảo vệ)."
