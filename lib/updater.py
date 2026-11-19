@@ -240,13 +240,14 @@ class Updater:
 
     @staticmethod
     def _build_fallback_urls(check_url: str) -> list:
-        """Thêm URL jsDelivr cho link raw.githubusercontent.com khi bị chặn."""
+        """Tạo các URL tương đương (raw <-> jsDelivr) để tránh bị CDN cache lệch."""
         fallbacks = []
+        base = check_url.split("?", 1)[0]
+
         try:
-            # https://raw.githubusercontent.com/OWNER/REPO/BRANCH/PATH
-            prefix = "https://raw.githubusercontent.com/"
-            if check_url.startswith(prefix):
-                rest = check_url[len(prefix):]
+            raw_prefix = "https://raw.githubusercontent.com/"
+            if base.startswith(raw_prefix):
+                rest = base[len(raw_prefix):]
                 parts = rest.split("/", 3)
                 if len(parts) >= 4:
                     owner, repo, branch, path = parts
@@ -255,6 +256,22 @@ class Updater:
                     )
         except Exception:
             pass
+
+        try:
+            jsd_prefix = "https://cdn.jsdelivr.net/gh/"
+            if base.startswith(jsd_prefix):
+                rest = base[len(jsd_prefix):]
+                parts = rest.split("/", 3)
+                if len(parts) >= 4 and "@" in parts[1]:
+                    owner = parts[0]
+                    repo, branch = parts[1].rsplit("@", 1)
+                    path = parts[2] + "/" + parts[3]
+                    fallbacks.append(
+                        f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}"
+                    )
+        except Exception:
+            pass
+
         return fallbacks
 
     # ------------------------------------------------------------------ xử lý

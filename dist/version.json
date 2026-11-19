@@ -1,5 +1,5 @@
 {
-  "version": "1.0.5",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.0.5/watermark-tool-1.0.5.zip",
-  "notes": "Sua loi AI tu gioi thieu: prompt doc anh chat che hon"
+  "version": "1.0.6",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.0.6/watermark-tool-1.0.6.zip",
+  "notes": "Updater kiem tra ca raw va jsDelivr de tranh cache lech"
 }
