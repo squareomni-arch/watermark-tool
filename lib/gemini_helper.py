@@ -21,12 +21,12 @@ from typing import Dict, Optional
 
 from .http_utils import urlopen
 
-DEFAULT_MODEL = "gemini-flash-lite-latest"
+DEFAULT_MODEL = "gemini-3.1-flash-lite"
 # Nếu model chính bận / không còn được hỗ trợ thì thử lần lượt các model này.
+# Chỉ nên để các model nhỏ, phản hồi nhanh; không bỏ model nặng vào đây.
 DEFAULT_FALLBACK_MODELS = [
     "gemini-flash-lite-latest",
-    "gemini-flash-latest",
-    "gemini-3.8-flash",
+    "gemini-3.5-flash-lite",
 ]
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
@@ -63,9 +63,14 @@ class GeminiHelper:
         self.prompt = str(settings.get("prompt") or DEFAULT_PROMPT)
 
         try:
-            self.timeout = max(5, int(settings.get("timeout", 20)))
+            self.timeout = max(5, int(settings.get("timeout", 12)))
         except (TypeError, ValueError):
-            self.timeout = 20
+            self.timeout = 12
+
+        try:
+            self.max_attempts = max(1, int(settings.get("max_attempts", 2)))
+        except (TypeError, ValueError):
+            self.max_attempts = 2
 
         self.available = bool(self.api_key)
 
@@ -96,10 +101,12 @@ class GeminiHelper:
             return None
 
         # Thử model chính trước, sau đó thử các model dự phòng nếu bị lỗi/bận.
+        # Giới hạn số lần thử để không chờ quá lâu khi nhiều model cùng bận.
         models = []
         for model in [self.model] + self.fallback_models:
             if model and model not in models:
                 models.append(model)
+        models = models[: self.max_attempts]
 
         for model in models:
             answer = self._generate_with_model(model, image_b64)
@@ -126,7 +133,7 @@ class GeminiHelper:
             ],
             "generationConfig": {
                 "temperature": 0.2,
-                "maxOutputTokens": 256,
+                "maxOutputTokens": 128,
             },
         }
 

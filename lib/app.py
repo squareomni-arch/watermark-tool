@@ -75,6 +75,7 @@ class StealthHelperApp:
             return
 
         if self.ai is not None:
+            self.overlay.show("Đang đọc màn hình...")
             log("[BẬT] CapsLock đang bật -> đang gọi Gemini đọc màn hình...")
 
             try:

@@ -1,5 +1,5 @@
 {
-  "version": "1.0.6",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.0.6/watermark-tool-1.0.6.zip",
-  "notes": "Updater kiem tra ca raw va jsDelivr de tranh cache lech"
+  "version": "1.0.7",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.0.7/watermark-tool-1.0.7.zip",
+  "notes": "Tang toc AI: model gemini-3.1-flash-lite, gioi han so lan thu, hien trang thai dang doc"
 }
