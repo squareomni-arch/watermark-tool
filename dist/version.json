@@ -1,5 +1,5 @@
 {
-  "version": "1.1.10",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.10/watermark-tool-1.1.10.zip",
-  "notes": "Them Exam_Diagnostic.bat de terminal khong tu dong tat"
+  "version": "1.1.11",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.11/watermark-tool-1.1.11.zip",
+  "notes": "Them diagnostic watcher ghi log tu dong, khong can mo terminal giua gio thi"
 }
