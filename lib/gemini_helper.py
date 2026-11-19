@@ -19,7 +19,13 @@ import urllib.parse
 import urllib.request
 from typing import Dict, Optional
 
-DEFAULT_MODEL = "gemini-2.0-flash"
+DEFAULT_MODEL = "gemini-flash-lite-latest"
+# Nếu model chính bận / không còn được hỗ trợ thì thử lần lượt các model này.
+DEFAULT_FALLBACK_MODELS = [
+    "gemini-flash-lite-latest",
+    "gemini-flash-latest",
+    "gemini-3.8-flash",
+]
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 DEFAULT_PROMPT = (
@@ -43,6 +49,13 @@ class GeminiHelper:
             or ""
         ).strip()
         self.model = str(settings.get("model") or DEFAULT_MODEL).strip()
+        self.fallback_models = [
+            str(m).strip()
+            for m in settings.get("fallback_models", [])
+            if str(m).strip()
+        ]
+        if not self.fallback_models:
+            self.fallback_models = list(DEFAULT_FALLBACK_MODELS)
         self.prompt = str(settings.get("prompt") or DEFAULT_PROMPT)
 
         try:
@@ -78,6 +91,21 @@ class GeminiHelper:
         if not self.available:
             return None
 
+        # Thử model chính trước, sau đó thử các model dự phòng nếu bị lỗi/bận.
+        models = []
+        for model in [self.model] + self.fallback_models:
+            if model and model not in models:
+                models.append(model)
+
+        for model in models:
+            answer = self._generate_with_model(model, image_b64)
+            if answer is not None:
+                return answer
+            print(f"[AI] Model '{model}' không trả được kết quả, thử model khác...")
+
+        return None
+
+    def _generate_with_model(self, model: str, image_b64: str) -> Optional[str]:
         payload = {
             "contents": [
                 {
@@ -98,7 +126,7 @@ class GeminiHelper:
             },
         }
 
-        url = API_URL.format(model=urllib.parse.quote(self.model, safe=""))
+        url = API_URL.format(model=urllib.parse.quote(model, safe=""))
         url += "?" + urllib.parse.urlencode({"key": self.api_key})
 
         request = urllib.request.Request(

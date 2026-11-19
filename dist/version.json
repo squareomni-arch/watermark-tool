@@ -1,5 +1,5 @@
 {
-  "version": "1.0.1",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.0.1/watermark-tool-1.0.1.zip",
-  "notes": "Ban 1.0.1: Gemini doc man hinh + auto update"
+  "version": "1.0.2",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.0.2/watermark-tool-1.0.2.zip",
+  "notes": "Sua loi Loi AI: doi model Gemini thanh gemini-flash-lite-latest, them model du phong"
 }
