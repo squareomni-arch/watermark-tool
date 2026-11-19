@@ -62,12 +62,20 @@ class StealthHelperApp:
         self._exam_target: Optional[tuple] = None
         self._exam_target_lock = threading.Lock()
         self._exam_attach_ready = threading.Event()
+        self._exam_attached = False
 
     # ------------------------------------------------------------------ chạy
     def start(self) -> None:
         self._print_banner()
 
         self._running = True
+
+        # Process con phải gắn overlay thành cửa sổ con NGAY TRƯỚC KHI hiển thị.
+        # Nếu để trigger.listen bật CapsLock show top-level trước, ExamLockdown
+        # có thể quét trúng cửa sổ top-level đó trong lúc đua và kill process.
+        if self.exam_child:
+            self._attach_to_current_exam_window()
+
         self._start_exam_watcher()
         try:
             self.trigger.listen(
@@ -92,6 +100,31 @@ class StealthHelperApp:
         self._running = False
 
     # ------------------------------------------- ẩn khỏi ExamLockdown
+    def _attach_to_current_exam_window(self) -> bool:
+        """Tìm app thi đang mở và gắn overlay ngay trên thread chính."""
+        if self.overlay is None:
+            return False
+
+        try:
+            from .exam_evasion import find_exam_window
+
+            found = find_exam_window()
+            if found is None:
+                log("[EVADE] Process con chưa thấy cửa sổ app thi, sẽ chờ watcher.")
+                return False
+
+            exam_hwnd, exam_pid, reason = found
+            if not self.overlay.attach_to(exam_hwnd):
+                log(f"[EVADE] Process con không gắn được vào hwnd={exam_hwnd}, pid={exam_pid}.")
+                return False
+
+            self._exam_attached = True
+            log(f"[EVADE] Process con đã gắn watermark vào cửa sổ app thi hwnd={exam_hwnd}, pid={exam_pid}.")
+            return True
+        except Exception as exc:
+            log(f"[EVADE] Lỗi khi gắn process con: {exc}")
+            return False
+
     def _start_exam_watcher(self) -> None:
         self._exam_watch_thread = threading.Thread(
             target=self._exam_watch_loop,
@@ -176,13 +209,20 @@ class StealthHelperApp:
 
         if target is None:
             if self.overlay.is_child and self.overlay.detach_from_parent():
+                self._exam_attached = False
                 self._exam_attach_ready.clear()
             return
 
         exam_hwnd, _exam_pid, _reason = target
         if self.overlay.attach_to(exam_hwnd):
+            self._exam_attached = True
             self._exam_attach_ready.set()
+            # Nếu CapsLock đang bật nhưng lúc trước ta cố tình chưa show để tránh
+            # top-level race, thì giờ đã an toàn để hiện watermark.
+            if self.active and not self.overlay.active:
+                self.overlay.show()
         else:
+            self._exam_attached = False
             self._exam_attach_ready.clear()
             if self.overlay.hwnd:
                 log("[EVADE] Không gắn được watermark vào cửa sổ app thi (SetParent thất bại).")
@@ -193,6 +233,12 @@ class StealthHelperApp:
 
         if self.overlay is None:
             log("[BẬT] CapsLock đang bật.")
+            return
+
+        # Process con của app thi: không được show overlay lúc nó còn là
+        # top-level window. Đợi _exam_tick gắn xong rồi mới show.
+        if self.exam_child and not self._exam_attached:
+            log("[BẬT] CapsLock đang bật, chờ gắn watermark vào cửa sổ app thi.")
             return
 
         if self.ai is not None:

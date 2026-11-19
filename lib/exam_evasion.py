@@ -349,8 +349,35 @@ def find_exam_window() -> Optional[Tuple[int, int, str]]:
     return best
 
 
-def spawn_as_child_of(parent_pid: int, extra_argv: Optional[List[str]] = None) -> int:
-    """Chạy lại main.py trong một process con của parent_pid.
+def get_parent_pid(pid: int) -> Optional[int]:
+    """Đọc PID cha thực tế từ Toolhelp32 snapshot."""
+    snapshot = KERNEL32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if not snapshot:
+        return None
+    try:
+        entry = PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        if not KERNEL32.Process32FirstW(snapshot, ctypes.byref(entry)):
+            return None
+        while True:
+            if int(entry.th32ProcessID) == pid:
+                parent = int(entry.th32ParentProcessID)
+                return parent if parent != pid else None
+            if not KERNEL32.Process32NextW(snapshot, ctypes.byref(entry)):
+                return None
+    finally:
+        KERNEL32.CloseHandle(snapshot)
+
+
+def spawn_as_child_of(
+    parent_pid: int,
+    extra_argv: Optional[List[str]] = None,
+    argv: Optional[List[str]] = None,
+) -> int:
+    """Chạy một process con của parent_pid.
+
+    Mặc định chạy lại main.py của Stealth Helper. Nếu `argv` được truyền thì
+    dùng đúng argv đó (dùng cho chẩn đoán).
 
     Trả về PID của process mới. Process hiện tại nên thoát ngay sau đó.
     """
@@ -387,7 +414,8 @@ def spawn_as_child_of(parent_pid: int, extra_argv: Optional[List[str]] = None) -
             raise OSError(f"UpdateProcThreadAttribute thất bại (code {ctypes.get_last_error()})")
 
         base_dir = Path(__file__).resolve().parent.parent
-        argv = [sys.executable, str(base_dir / "main.py"), "--exam-child"] + list(extra_argv or [])
+        if argv is None:
+            argv = [sys.executable, str(base_dir / "main.py"), "--exam-child"] + list(extra_argv or [])
         command_line = subprocess.list2cmdline(argv)
 
         if not KERNEL32.CreateProcessW(
