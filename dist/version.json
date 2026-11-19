@@ -1,5 +1,5 @@
 {
-  "version": "1.1.9",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.9/watermark-tool-1.1.9.zip",
-  "notes": "Gan overlay truoc khi show de tranh bi ExamLockdown kill; them script chan doan exam_diagnostic.py"
+  "version": "1.1.10",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.10/watermark-tool-1.1.10.zip",
+  "notes": "Them Exam_Diagnostic.bat de terminal khong tu dong tat"
 }

@@ -127,4 +127,19 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        exit_code = main()
+    except SystemExit as exc:
+        exit_code = int(exc.code or 0)
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        exit_code = 1
+
+    try:
+        input("\nNhấn Enter để thoát...")
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+    raise SystemExit(exit_code)
