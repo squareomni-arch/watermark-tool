@@ -67,6 +67,10 @@ BASE_GENERATION_CONFIG = {
 }
 
 
+class ScreenCaptureBlockedError(RuntimeError):
+    """Ném khi Windows không cho chụp màn hình hoặc trả về ảnh đen."""
+
+
 class GeminiHelper:
     """Gọi Gemini Flash để đọc văn bản trên màn hình và trả lời."""
 
@@ -128,12 +132,32 @@ class GeminiHelper:
         self.available = bool(self.api_key)
 
     # ------------------------------------------------------------------ chụp ảnh
+    @staticmethod
+    def _is_black_screenshot(image) -> bool:
+        """Kiểm tra ảnh chụp có phải toàn đen không.
+
+        Windows thường trả về ảnh đen khi chụp secure desktop hoặc nội dung
+        được bảo vệ (DRM). Nếu ảnh gần như đen hoàn toàn, gửi cho Gemini cũng
+        vô nghĩa nên cần báo riêng cho người dùng.
+        """
+        try:
+            from PIL import ImageStat
+
+            stats = ImageStat.Stat(image.convert("L"))
+            # Giá trị kênh xám trung bình; ảnh bị chặn thường < 4/255.
+            return float(stats.mean[0]) < 4.0
+        except Exception:
+            return False
+
     def _capture_screen_as_jpeg_b64(self, detailed: bool = False) -> Optional[str]:
         """Chụp màn hình chính, nén nhỏ và trả về ảnh JPEG dạng base64.
 
         Ảnh to (4K/Retina) là nguyên nhân phổ biến khiến Gemini timeout. Ta
         giữ nguyên tỉ lệ nhưng giới hạn chiều dài cạnh dài để request nhanh hơn.
         Chế độ chi tiết giữ ảnh lớn hơn để đọc chữ nhỏ (ví dụ đề IELTS).
+
+        Nếu Windows chặn chụp màn hình (secure desktop / DRM) thì ném
+        `ScreenCaptureBlockedError` để app hiển thị thông báo rõ ràng.
         """
         try:
             from PIL import Image, ImageGrab
@@ -145,7 +169,25 @@ class GeminiHelper:
             return None
 
         try:
-            image = ImageGrab.grab().convert("RGB")
+            try:
+                image = ImageGrab.grab()
+            except OSError as exc:
+                # Ví dụ: "The handle is invalid" khi đang ở secure desktop.
+                raise ScreenCaptureBlockedError(
+                    f"Windows không cho phép chụp màn hình lúc này: {exc}"
+                ) from exc
+
+            if image is None:
+                raise ScreenCaptureBlockedError(
+                    "Windows trả về ảnh rỗng khi chụp màn hình."
+                )
+
+            image = image.convert("RGB")
+            if self._is_black_screenshot(image):
+                raise ScreenCaptureBlockedError(
+                    "Ảnh chụp bị đen hoàn toàn. Nội dung có thể đang bị Windows"
+                    " chặn chụp (secure desktop, DRM, game hoặc video có bảo vệ)."
+                )
 
             if detailed:
                 max_dimension = self.detail_image_dimension
@@ -168,6 +210,8 @@ class GeminiHelper:
             buffer = io.BytesIO()
             image.save(buffer, format="JPEG", quality=quality, optimize=True)
             return base64.b64encode(buffer.getvalue()).decode("ascii")
+        except ScreenCaptureBlockedError:
+            raise
         except Exception as exc:
             print(f"[ERROR] Không chụp được màn hình: {exc}")
             return None

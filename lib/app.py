@@ -10,7 +10,7 @@ import time
 from typing import Dict, Optional
 
 from .capslock_trigger import CapsLockTrigger
-from .gemini_helper import GeminiHelper
+from .gemini_helper import GeminiHelper, ScreenCaptureBlockedError
 from .overlay import WatermarkOverlay
 
 
@@ -91,6 +91,9 @@ class StealthHelperApp:
 
             try:
                 answer = self.ai.answer_from_screen(self.detailed_mode)
+            except ScreenCaptureBlockedError as exc:
+                log(f"[CHẶN] {exc}")
+                answer = "__SCREEN_BLOCKED__"
             except Exception:
                 import traceback
 
@@ -102,7 +105,9 @@ class StealthHelperApp:
                 self.deactivate()
                 return
 
-            if answer is None:
+            if answer == "__SCREEN_BLOCKED__":
+                self.overlay.show("Không chụp được màn hình (bị chặn)")
+            elif answer is None:
                 self.overlay.show("Lỗi AI")
             elif answer.strip().upper().startswith("NO_QUESTION"):
                 self.overlay.show("Không thấy câu hỏi")
