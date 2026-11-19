@@ -1,0 +1,32 @@
+{
+    "trigger": {
+        "mode": "capslock",
+        "poll_interval": 0.1
+    },
+    "features": {
+        "overlay": true,
+        "ai": true
+    },
+    "gemini": {
+        "api_key": "",
+        "model": "gemini-2.0-flash",
+        "timeout": 20
+    },
+    "update": {
+        "enabled": true,
+        "check_url": "",
+        "check_interval_hours": 6
+    },
+    "watermark": {
+        "text": "Hello",
+        "color": "#FFD700",
+        "opacity": 0.7,
+        "font_family": "Segoe UI",
+        "font_size": 16,
+        "bold": true,
+        "corner": "top_right",
+        "margin_x": 28,
+        "margin_y": 20,
+        "padding": 4
+    }
+}

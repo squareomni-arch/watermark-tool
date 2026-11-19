@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+build/
+
+# Mac
+.DS_Store
+
+# Biến môi trường / dữ liệu riêng của người dùng
+data/config.json
+data/stealth_helper.pid
+data/stealth_helper.log
+
+# Bản cập nhật nhị phân (chỉ giữ dist/version.json trên git)
+dist/*.zip
