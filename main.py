@@ -190,6 +190,8 @@ def _acquire_pid_file() -> bool:
             return True
         except FileExistsError:
             old_pid = _read_pid()
+            if old_pid == os.getpid():
+                return True
             if old_pid and _is_pid_running(old_pid):
                 return False
 
@@ -233,11 +235,13 @@ def main() -> int:
     enable_dpi_awareness()
     set_console_title("Stealth Helper - CapsLock ON/OFF")
 
+    exam_child = "--exam-child" in sys.argv
+
     app = None
     updater = None
     try:
         try:
-            app = StealthHelperApp(config)
+            app = StealthHelperApp(config, exam_child=exam_child)
         except RuntimeError as exc:
             print(f"[ERROR] {exc}")
             return 1

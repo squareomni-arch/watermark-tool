@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import ctypes
 import sys
+from ctypes import wintypes
 from typing import Dict, Optional, Tuple
 
 _IS_WINDOWS = sys.platform.startswith("win")
@@ -25,15 +26,21 @@ WS_EX_TOPMOST = 0x00000008
 WS_EX_TOOLWINDOW = 0x00000080
 WS_EX_NOACTIVATE = 0x08000000
 WS_POPUP = 0x80000000
+WS_CHILD = 0x40000000
 
 SW_HIDE = 0
 SW_SHOWNOACTIVATE = 4
 
+HWND_TOP = 0
 HWND_TOPMOST = -1
 SWP_NOSIZE = 0x0001
 SWP_NOMOVE = 0x0002
 SWP_NOACTIVATE = 0x0010
 SWP_SHOWWINDOW = 0x0040
+SWP_FRAMECHANGED = 0x0020
+
+GWL_STYLE = -16
+GWL_EXSTYLE = -20
 
 ULW_ALPHA = 0x00000002
 AC_SRC_OVER = 0x00
@@ -257,6 +264,7 @@ class WatermarkOverlay:
 
         self.hwnd: Optional[int] = None
         self.active = False
+        self._parent_hwnd: Optional[int] = None
 
         self._user32 = None
         self._gdi32 = None
@@ -286,6 +294,68 @@ class WatermarkOverlay:
     @property
     def available(self) -> bool:
         return self.hwnd is not None
+
+    @property
+    def is_child(self) -> bool:
+        return self._parent_hwnd is not None and self.hwnd is not None
+
+    # ------------------------------------------------------------- ẩn khỏi EnumWindows
+    def attach_to(self, parent_hwnd: int) -> bool:
+        """Gắn watermark vào cửa sổ app thi để nó không còn là top-level window.
+
+        ExamLockdown quét mọi cửa sổ top-level đang hiện (kể cả toolwindow/layered)
+        rồi kill process chủ. Cửa sổ con (WS_CHILD) không được EnumWindows liệt kê,
+        nên watermark vẫn hiển thị mà process của tool không bị diệt.
+        """
+        if not self.hwnd or not parent_hwnd:
+            return False
+        if not self._user32.IsWindow(parent_hwnd):
+            return False
+        if parent_hwnd == self._parent_hwnd:
+            return True
+
+        try:
+            self._user32.SetParent(self.hwnd, parent_hwnd)
+
+            style = self._user32.GetWindowLongPtrW(self.hwnd, GWL_STYLE)
+            style = (style & ~WS_POPUP) | WS_CHILD
+            self._user32.SetWindowLongPtrW(self.hwnd, GWL_STYLE, style)
+
+            exstyle = self._user32.GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE)
+            exstyle &= ~WS_EX_TOPMOST
+            self._user32.SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, exstyle)
+
+            self._parent_hwnd = int(parent_hwnd)
+            self._commit_layer()
+            if self.active:
+                self._show(None, None, self._multiline)
+            return True
+        except Exception:
+            return False
+
+    def detach_from_parent(self) -> bool:
+        """Đưa watermark trở lại thành top-level khi app thi đã thoát."""
+        if not self.hwnd or self._parent_hwnd is None:
+            return False
+
+        try:
+            self._user32.SetParent(self.hwnd, None)
+
+            style = self._user32.GetWindowLongPtrW(self.hwnd, GWL_STYLE)
+            style = (style & ~WS_CHILD) | WS_POPUP
+            self._user32.SetWindowLongPtrW(self.hwnd, GWL_STYLE, style)
+
+            exstyle = self._user32.GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE)
+            exstyle |= WS_EX_TOPMOST
+            self._user32.SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, exstyle)
+
+            self._parent_hwnd = None
+            self._commit_layer()
+            if self.active:
+                self._show(None, None, self._multiline)
+            return True
+        except Exception:
+            return False
 
     def _init_win32(self) -> None:
         user32 = ctypes.WinDLL("user32", use_last_error=True)
@@ -317,6 +387,16 @@ class WatermarkOverlay:
             ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int32, ctypes.c_int32,
             ctypes.c_int32, ctypes.c_int32, ctypes.c_uint32,
         ]
+        user32.SetParent.restype = ctypes.c_void_p
+        user32.SetParent.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        user32.IsWindow.restype = wintypes.BOOL
+        user32.IsWindow.argtypes = [ctypes.c_void_p]
+        user32.GetClientRect.restype = wintypes.BOOL
+        user32.GetClientRect.argtypes = [ctypes.c_void_p, ctypes.POINTER(RECT)]
+        user32.GetWindowLongPtrW.restype = ctypes.c_ssize_t
+        user32.GetWindowLongPtrW.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        user32.SetWindowLongPtrW.restype = ctypes.c_ssize_t
+        user32.SetWindowLongPtrW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_ssize_t]
         user32.SystemParametersInfoW.argtypes = [
             ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_uint32
         ]
@@ -528,13 +608,35 @@ class WatermarkOverlay:
         ctypes.memmove(self._bits, bytes(merged), length)
 
     def _position(self) -> Tuple[int, int]:
+        width, height = self._layer_size
+
+        if self._parent_hwnd and self._user32.IsWindow(self._parent_hwnd):
+            # Cửa sổ overlay là cửa sổ con của app thi: tọa độ tính theo client
+            # của parent. Nhờ vậy watermark không nằm trong danh sách top-level
+            # mà ExamLockdown dùng để diệt overlay.
+            client = RECT()
+            if not self._user32.GetClientRect(self._parent_hwnd, ctypes.byref(client)):
+                client = RECT(0, 0, 1920, 1080)
+
+            left = client.left + self.margin_x
+            top = client.top + self.margin_y
+            right = max(left, int(client.right) - width - self.margin_x)
+            bottom = max(top, int(client.bottom) - height - self.margin_y)
+
+            if "left" in self.corner and "bottom" in self.corner:
+                return left, bottom
+            if "left" in self.corner:
+                return left, top
+            if "bottom" in self.corner:
+                return right, bottom
+            return right, top  # mặc định: góc trên bên phải
+
         work = RECT()
         if not self._user32.SystemParametersInfoW(
             SPI_GETWORKAREA, 0, ctypes.byref(work), 0
         ):
             work = RECT(0, 0, 1920, 1080)
 
-        width, height = self._layer_size
         left = work.left + self.margin_x
         top = work.top + self.margin_y
         right = work.right - width - self.margin_x
@@ -550,13 +652,29 @@ class WatermarkOverlay:
 
     def _commit_layer(self) -> None:
         width, height = self._layer_size
-        x, y = self._position()
 
         blend = BLENDFUNCTION(AC_SRC_OVER, 0, 255, AC_SRC_ALPHA)
-        dst = POINT(x, y)
         size = SIZE(width, height)
         src = POINT(0, 0)
 
+        if self._parent_hwnd and self._user32.IsWindow(self._parent_hwnd):
+            # Cửa sổ con: giữ nguyên kích thước, chỉ cập nhật nội dung + vị trí
+            # tương đối so với client của parent.
+            self._user32.UpdateLayeredWindow(
+                self.hwnd, self._screen_dc,
+                None, ctypes.byref(size),
+                self._mem_dc, ctypes.byref(src),
+                0, ctypes.byref(blend), ULW_ALPHA,
+            )
+            x, y = self._position()
+            self._user32.SetWindowPos(
+                self.hwnd, HWND_TOP, x, y, 0, 0,
+                SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            )
+            return
+
+        x, y = self._position()
+        dst = POINT(x, y)
         self._user32.UpdateLayeredWindow(
             self.hwnd, self._screen_dc,
             ctypes.byref(dst), ctypes.byref(size),
@@ -623,8 +741,9 @@ class WatermarkOverlay:
         else:
             x, y = self._position()
 
+        insert_after = HWND_TOP if self._parent_hwnd else HWND_TOPMOST
         self._user32.SetWindowPos(
-            self.hwnd, HWND_TOPMOST, x, y, 0, 0,
+            self.hwnd, insert_after, x, y, 0, 0,
             SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
         )
         self._user32.ShowWindow(self.hwnd, SW_SHOWNOACTIVATE)

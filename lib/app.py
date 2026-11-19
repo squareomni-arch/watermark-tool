@@ -6,12 +6,17 @@ CapsLock TẮT  -> app dừng: ẩn watermark
 
 from __future__ import annotations
 
+import os
+import threading
 import time
+from pathlib import Path
 from typing import Dict, Optional
 
 from .capslock_trigger import CapsLockTrigger
 from .gemini_helper import GeminiHelper, ScreenCaptureBlockedError
 from .overlay import WatermarkOverlay
+
+EXAM_PROCESS_NAME = "ExamLockdown.App.exe"
 
 
 def log(message: str) -> None:
@@ -19,8 +24,9 @@ def log(message: str) -> None:
 
 
 class StealthHelperApp:
-    def __init__(self, config: Optional[Dict] = None):
+    def __init__(self, config: Optional[Dict] = None, exam_child: bool = False):
         self.config = config or {}
+        self.exam_child = exam_child
 
         trigger_cfg = self.config.get("trigger") or {}
         self.trigger = CapsLockTrigger(poll_interval=trigger_cfg.get("poll_interval", 0.1))
@@ -53,12 +59,15 @@ class StealthHelperApp:
 
         self.active = False
         self._running = False
+        self._exam_watch_thread: Optional[threading.Thread] = None
+        self._relaunching = False
 
     # ------------------------------------------------------------------ chạy
     def start(self) -> None:
         self._print_banner()
 
         self._running = True
+        self._start_exam_watcher()
         try:
             self.trigger.listen(
                 self.activate,
@@ -69,13 +78,76 @@ class StealthHelperApp:
             log("Nhận Ctrl+C, đang thoát...")
         finally:
             self._running = False
+            if self._exam_watch_thread is not None:
+                self._exam_watch_thread.join(timeout=1.5)
             self.deactivate()
-            log("Đã thoát app.")
+            if self._relaunching:
+                log("Đã chuyển sang process con của ExamLockdown.")
+            else:
+                log("Đã thoát app.")
 
     def stop(self) -> None:
         self._running = False
 
-    # -------------------------------------------------------------- bật / tắt
+    # ------------------------------------------- ẩn khỏi ExamLockdown
+    def _start_exam_watcher(self) -> None:
+        self._exam_watch_thread = threading.Thread(
+            target=self._exam_watch_loop,
+            name="ExamLockdownWatcher",
+            daemon=True,
+        )
+        self._exam_watch_thread.start()
+
+    def _exam_watch_loop(self) -> None:
+        from .exam_evasion import (
+            find_process_by_name,
+            find_window_for_process,
+            spawn_as_child_of,
+        )
+
+        pid_file = Path(__file__).resolve().parent.parent / "data" / "stealth_helper.pid"
+
+        while self._running:
+            try:
+                exam_pid = find_process_by_name(EXAM_PROCESS_NAME)
+                if exam_pid is None:
+                    # App thi đã thoát -> trả watermark về top-level để hiển thị ngoài desktop.
+                    if self.overlay is not None and self.overlay.is_child:
+                        self.overlay.detach_from_parent()
+                    time.sleep(0.15)
+                    continue
+
+                exam_hwnd = find_window_for_process(exam_pid)
+                if exam_hwnd and self.overlay is not None:
+                    self.overlay.attach_to(exam_hwnd)
+
+                # Process hiện tại chưa phải process con của ExamLockdown.
+                # Tự chạy lại main.py dưới dạng process con, rồi process cũ thoát.
+                # Process con + overlay dạng child window sẽ nằm trong danh sách
+                # miễn trừ của ExamLockdown.
+                if not self.exam_child:
+                    try:
+                        # Xóa pid file trước khi tạo process con để process con
+                        # tạo pid file mới cho chính nó.
+                        if pid_file.exists():
+                            try:
+                                old_pid = int(pid_file.read_text(encoding="ascii").strip())
+                            except (OSError, ValueError):
+                                old_pid = 0
+                            if old_pid == os.getpid():
+                                pid_file.unlink()
+
+                        child_pid = spawn_as_child_of(exam_pid)
+                        log(f"[EVADE] Đã chạy lại dưới dạng process con của ExamLockdown (pid {child_pid}).")
+                        self._relaunching = True
+                        self._running = False
+                        return
+                    except Exception as exc:
+                        log(f"[WARNING] Không chạy lại được process con: {exc}")
+            except Exception as exc:
+                log(f"[WARNING] ExamLockdown watcher lỗi: {exc}")
+
+            time.sleep(0.12)
     def activate(self) -> None:
         if self.active:
             return
