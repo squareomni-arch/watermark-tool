@@ -31,6 +31,10 @@ DEFAULT_FALLBACK_MODELS = [
 ]
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
+DEFAULT_MODE = "short"
+MODE_SHORT = "short"
+MODE_DETAIL = "detail"
+
 DEFAULT_PROMPT = (
     "Ảnh chụp màn hình máy tính sẽ được cung cấp riêng."
     " Nhiệm vụ duy nhất của bạn: đọc văn bản TRONG ẢNH,"
@@ -41,6 +45,26 @@ DEFAULT_PROMPT = (
     " chỉ xuất đúng một từ NO_QUESTION."
     " Không giới thiệu bản thân, không thêm lời dẫn."
 )
+
+DETAIL_PROMPT = (
+    "Ảnh chụp màn hình máy tính được cung cấp riêng."
+    " Hãy đọc TOÀN BỘ văn bản trong ảnh thật chính xác: cả phần bên trái"
+    " (đoạn văn / passage) và phần bên phải (câu hỏi)."
+    "\n\nNhiệm vụ: trả lời TẤT CẢ câu hỏi đang hiển thị trong ảnh.\n"
+    "- Câu TRUE / FALSE / NOT GIVEN: chỉ ghi đáp án.\n"
+    "- Câu điền từ / chỗ trống: ghi từ cần điền đúng như trong ô chọn.\n"
+    "- Câu trắc nghiệm A/B/C/D: ghi chữ cái đáp án.\n"
+    "- Câu matching heading / researcher: ghi đúng mã (i, ii, ... hoặc A-E).\n"
+    "\nĐịnh dạng bắt buộc: mỗi câu một dòng, dạng 'số. đáp án',"
+    " ví dụ '1. TRUE', '27. half-yawns', '33. B'."
+    " Không giải thích, không thêm lời dẫn, không giới thiệu bản thân."
+    " Nếu ảnh không có câu hỏi nào, chỉ xuất đúng một từ NO_QUESTION."
+)
+
+BASE_GENERATION_CONFIG = {
+    "temperature": 0.1,
+    "topP": 0.9,
+}
 
 
 class GeminiHelper:
@@ -62,12 +86,22 @@ class GeminiHelper:
         ]
         if not self.fallback_models:
             self.fallback_models = list(DEFAULT_FALLBACK_MODELS)
+        self.mode = str(settings.get("mode") or DEFAULT_MODE).strip().lower()
+        if self.mode not in (MODE_SHORT, MODE_DETAIL):
+            self.mode = DEFAULT_MODE
         self.prompt = str(settings.get("prompt") or DEFAULT_PROMPT)
 
         try:
             self.timeout = max(5, int(settings.get("timeout", 12)))
         except (TypeError, ValueError):
             self.timeout = 12
+
+        try:
+            self.detail_timeout = max(
+                self.timeout, int(settings.get("detail_timeout", 40))
+            )
+        except (TypeError, ValueError):
+            self.detail_timeout = 40
 
         try:
             self.max_attempts = max(1, int(settings.get("max_attempts", 2)))
@@ -84,14 +118,22 @@ class GeminiHelper:
         except (TypeError, ValueError):
             self.max_image_dimension = 1920
 
+        try:
+            self.detail_image_dimension = max(
+                1280, int(settings.get("detail_image_dimension", 2560))
+            )
+        except (TypeError, ValueError):
+            self.detail_image_dimension = 2560
+
         self.available = bool(self.api_key)
 
     # ------------------------------------------------------------------ chụp ảnh
-    def _capture_screen_as_jpeg_b64(self) -> Optional[str]:
+    def _capture_screen_as_jpeg_b64(self, detailed: bool = False) -> Optional[str]:
         """Chụp màn hình chính, nén nhỏ và trả về ảnh JPEG dạng base64.
 
         Ảnh to (4K/Retina) là nguyên nhân phổ biến khiến Gemini timeout. Ta
         giữ nguyên tỉ lệ nhưng giới hạn chiều dài cạnh dài để request nhanh hơn.
+        Chế độ chi tiết giữ ảnh lớn hơn để đọc chữ nhỏ (ví dụ đề IELTS).
         """
         try:
             from PIL import Image, ImageGrab
@@ -105,10 +147,17 @@ class GeminiHelper:
         try:
             image = ImageGrab.grab().convert("RGB")
 
+            if detailed:
+                max_dimension = self.detail_image_dimension
+                quality = 88
+            else:
+                max_dimension = self.max_image_dimension
+                quality = 78
+
             width, height = image.size
             max_side = max(width, height)
-            if max_side > self.max_image_dimension:
-                scale = self.max_image_dimension / max_side
+            if max_side > max_dimension:
+                scale = max_dimension / max_side
                 new_size = (max(1, int(width * scale)), max(1, int(height * scale)))
                 try:
                     resampling = Image.Resampling.LANCZOS
@@ -117,14 +166,14 @@ class GeminiHelper:
                 image = image.resize(new_size, resampling)
 
             buffer = io.BytesIO()
-            image.save(buffer, format="JPEG", quality=78, optimize=True)
+            image.save(buffer, format="JPEG", quality=quality, optimize=True)
             return base64.b64encode(buffer.getvalue()).decode("ascii")
         except Exception as exc:
             print(f"[ERROR] Không chụp được màn hình: {exc}")
             return None
 
     # ------------------------------------------------------------------ gọi API
-    def _generate(self, image_b64: str) -> Optional[str]:
+    def _generate(self, image_b64: str, detailed: bool = False) -> Optional[str]:
         if not self.available:
             return None
 
@@ -138,7 +187,7 @@ class GeminiHelper:
 
         for model in models:
             for attempt in range(1, self.retries_per_model + 1):
-                answer = self._generate_with_model(model, image_b64)
+                answer = self._generate_with_model(model, image_b64, detailed)
                 if answer is not None:
                     return answer
                 if attempt < self.retries_per_model:
@@ -149,12 +198,19 @@ class GeminiHelper:
 
         return None
 
-    def _generate_with_model(self, model: str, image_b64: str) -> Optional[str]:
+    def _generate_with_model(
+        self, model: str, image_b64: str, detailed: bool = False
+    ) -> Optional[str]:
+        prompt = DETAIL_PROMPT if detailed else self.prompt
+
+        generation_config = dict(BASE_GENERATION_CONFIG)
+        generation_config["maxOutputTokens"] = 1024 if detailed else 128
+
         payload = {
             "contents": [
                 {
                     "parts": [
-                        {"text": self.prompt},
+                        {"text": prompt},
                         {
                             "inlineData": {
                                 "mimeType": "image/jpeg",
@@ -164,11 +220,10 @@ class GeminiHelper:
                     ]
                 }
             ],
-            "generationConfig": {
-                "temperature": 0.2,
-                "maxOutputTokens": 128,
-            },
+            "generationConfig": generation_config,
         }
+
+        timeout = self.detail_timeout if detailed else self.timeout
 
         url = API_URL.format(model=urllib.parse.quote(model, safe=""))
         url += "?" + urllib.parse.urlencode({"key": self.api_key})
@@ -179,8 +234,9 @@ class GeminiHelper:
             headers={"Content-Type": "application/json"},
         )
 
+        started = time.time()
         try:
-            with urlopen(request, timeout=self.timeout) as response:
+            with urlopen(request, timeout=timeout) as response:
                 body = response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
@@ -193,28 +249,44 @@ class GeminiHelper:
             print("[ERROR] Gemini API quá thời gian chờ.")
             return None
 
+        elapsed = time.time() - started
+        print(f"[AI] {model} trả lời trong {elapsed:.2f}s")
+
         try:
             data = json.loads(body)
             answer = data["candidates"][0]["content"]["parts"][0]["text"]
-            return " ".join(str(answer).strip().split())
+            text = str(answer).strip()
+
+            if detailed:
+                # Chế độ chi tiết cần giữ xuống dòng để hiển thị từng câu.
+                lines = [line.strip() for line in text.splitlines() if line.strip()]
+                return "\n".join(lines)
+
+            return " ".join(text.split())
         except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
             print(f"[ERROR] Không đọc được kết quả Gemini: {exc}")
             print(f"[DEBUG] {body[:500]}")
             return None
 
     # ------------------------------------------------------------------ public
-    def answer_from_screen(self) -> Optional[str]:
-        """Đọc màn hình, trả về câu trả lời ngắn.
+    def answer_from_screen(self, detailed: Optional[bool] = None) -> Optional[str]:
+        """Đọc màn hình và trả về câu trả lời.
+
+        detailed=True  -> trả lời tất cả câu hỏi, mỗi câu một dòng (đề thi).
+        detailed=False -> trả lời ngắn gọn 1 dòng.
 
         Trả về None nếu không có API key / không chụp được / lỗi API.
         Trả về "NO_QUESTION" nếu màn hình không có câu hỏi.
         """
+        if detailed is None:
+            detailed = self.mode == MODE_DETAIL
+
         if not self.available:
             print("[CẢNH BÁO] Chưa có GEMINI_API_KEY, không gọi được Gemini.")
             return None
 
-        image_b64 = self._capture_screen_as_jpeg_b64()
+        image_b64 = self._capture_screen_as_jpeg_b64(detailed=detailed)
         if not image_b64:
             return None
 
-        return self._generate(image_b64)
+        return self._generate(image_b64, detailed=detailed)

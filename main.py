@@ -62,9 +62,27 @@ def migrate_runtime_config(config: dict) -> dict:
     changed = False
 
     features = config.setdefault("features", {})
-    if "ai" not in features:
-        features["ai"] = True
-        changed = True
+    feature_defaults = {
+        "ai": True,
+        "answer_all": True,
+        "detail_max_lines": 20,
+        "detail_max_chars": 800,
+    }
+    for key, value in feature_defaults.items():
+        if key not in features:
+            features[key] = value
+            changed = True
+
+    watermark = config.setdefault("watermark", {})
+    watermark_defaults = {
+        "max_width": 620,
+        "box_color": "#121212",
+        "box_opacity": 0.82,
+    }
+    for key, value in watermark_defaults.items():
+        if key not in watermark:
+            watermark[key] = value
+            changed = True
 
     gemini = config.setdefault("gemini", {})
     defaults = {
@@ -74,9 +92,11 @@ def migrate_runtime_config(config: dict) -> dict:
             "gemini-flash-lite-latest",
         ],
         "timeout": 12,
+        "detail_timeout": 40,
         "max_attempts": 2,
         "retries_per_model": 1,
         "max_image_dimension": 1920,
+        "detail_image_dimension": 2560,
     }
 
     for key, value in defaults.items():

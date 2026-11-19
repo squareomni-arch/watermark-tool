@@ -48,6 +48,8 @@ DT_LEFT = 0x0000
 DT_TOP = 0x0000
 DT_SINGLELINE = 0x0020
 DT_NOPREFIX = 0x0800
+DT_WORDBREAK = 0x0010
+DT_CALCRECT = 0x0400
 
 TRANSPARENT = 1
 FW_NORMAL = 400
@@ -66,6 +68,8 @@ DEFAULT_FONT = "Segoe UI"
 DEFAULT_FONT_SIZE = 16
 DEFAULT_MARGIN = (28, 20)
 DEFAULT_PADDING = 4
+DEFAULT_BOX_COLOR = (18, 18, 18)
+DEFAULT_BOX_OPACITY = 0.82
 
 
 # --------------------------------------------------------------- struct Win32
@@ -244,6 +248,12 @@ class WatermarkOverlay:
         self.margin_x = int(settings.get("margin_x", DEFAULT_MARGIN[0]))
         self.margin_y = int(settings.get("margin_y", DEFAULT_MARGIN[1]))
         self.padding = int(settings.get("padding", DEFAULT_PADDING))
+        self.box_color = parse_color(settings.get("box_color", DEFAULT_BOX_COLOR))
+        try:
+            self.box_opacity = float(settings.get("box_opacity", DEFAULT_BOX_OPACITY))
+        except (TypeError, ValueError):
+            self.box_opacity = DEFAULT_BOX_OPACITY
+        self.box_opacity = max(0.0, min(1.0, self.box_opacity))
 
         self.hwnd: Optional[int] = None
         self.active = False
@@ -258,6 +268,8 @@ class WatermarkOverlay:
         self._dib = None
         self._bits = None
         self._layer_size = (0, 0)
+        self._multiline = False
+        self._max_text_width = int(settings.get("max_width", 620))
 
         if not _IS_WINDOWS:
             return
@@ -400,6 +412,16 @@ class WatermarkOverlay:
         )
         return int(size.cx), int(size.cy)
 
+    def _measure_multiline(self, hdc: int) -> Tuple[int, int]:
+        """Đo kích thước khối nhiều dòng, giới hạn bề rộng để tự xuống dòng."""
+        rect = RECT(0, 0, self._max_text_width, 0)
+        self._user32.DrawTextW(
+            hdc, self.text, len(self.text),
+            ctypes.byref(rect),
+            DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX | DT_CALCRECT,
+        )
+        return max(1, int(rect.right)), max(1, int(rect.bottom))
+
     def _resize_and_paint(self) -> None:
         self._release_gdi()
 
@@ -417,7 +439,11 @@ class WatermarkOverlay:
 
         # Chọn font vào DC trước khi đo để kích thước khớp với lúc vẽ.
         self._gdi32.SelectObject(self._mem_dc, self._font)
-        text_w, text_h = self._text_size(self._mem_dc)
+        multiline = self._multiline and "\n" in self.text
+        if multiline:
+            text_w, text_h = self._measure_multiline(self._mem_dc)
+        else:
+            text_w, text_h = self._text_size(self._mem_dc)
         width = max(1, text_w + self.padding * 2)
         height = max(1, text_h + self.padding * 2)
 
@@ -443,27 +469,63 @@ class WatermarkOverlay:
         self._gdi32.SetBkMode(self._mem_dc, TRANSPARENT)
         self._gdi32.SetTextColor(self._mem_dc, 0x00FFFFFF)  # trắng -> dùng làm alpha
 
-        brush = self._gdi32.CreateSolidBrush(0x00000000)
+        box_visible = multiline and self.box_opacity > 0
+        if box_visible:
+            # Nền tối mờ để chữ đọc rõ trên mọi loại nền (đề thi, web, PDF...).
+            r, g, b = self.box_color
+            brush = self._gdi32.CreateSolidBrush((r << 16) | (g << 8) | b)
+        else:
+            brush = self._gdi32.CreateSolidBrush(0x00000000)
         rect = RECT(0, 0, width, height)
         self._user32.FillRect(self._mem_dc, ctypes.byref(rect), brush)
         self._gdi32.DeleteObject(brush)
 
         draw_rect = RECT(self.padding, self.padding, self.padding + text_w, self.padding + text_h)
+        draw_flags = DT_LEFT | DT_TOP | DT_NOPREFIX
+        draw_flags |= DT_WORDBREAK if multiline else DT_SINGLELINE
         self._user32.DrawTextW(
             self._mem_dc, self.text, len(self.text),
             ctypes.byref(draw_rect),
-            DT_LEFT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX,
+            draw_flags,
         )
 
-        self._apply_alpha(width, height)
+        self._apply_alpha(width, height, keep_background=box_visible)
         self._layer_size = (width, height)
         self._commit_layer()
 
-    def _apply_alpha(self, width: int, height: int) -> None:
+    def _apply_alpha(self, width: int, height: int, keep_background: bool = False) -> None:
         length = width * height * 4
         raw = bytearray(ctypes.string_at(self._bits, length))
+
+        if not keep_background:
+            apply_alpha(raw, self.color, self.opacity)
+            ctypes.memmove(self._bits, bytes(raw), length)
+            return
+
+        # Nền tối mờ cho ô nhiều dòng: giữ độ sáng của nền, chữ vẽ trắng nên
+        # alpha = độ sáng * opacity, màu = nền hoặc màu chữ tuỳ pixel.
+        solid = int(255 * self.box_opacity)
+        box_r, box_g, box_b = self.box_color
+        background = bytearray()
+        for i in range(0, len(raw), 4):
+            background += bytes((
+                (box_b * solid) // 255,
+                (box_g * solid) // 255,
+                (box_r * solid) // 255,
+                solid,
+            ))
+
         apply_alpha(raw, self.color, self.opacity)
-        ctypes.memmove(self._bits, bytes(raw), length)
+        merged = bytearray(len(raw))
+        for i in range(0, len(raw), 4):
+            alpha = raw[i + 3]
+            inv = 255 - alpha
+            merged[i] = raw[i] + (background[i] * inv) // 255
+            merged[i + 1] = raw[i + 1] + (background[i + 1] * inv) // 255
+            merged[i + 2] = raw[i + 2] + (background[i + 2] * inv) // 255
+            merged[i + 3] = alpha + (background[i + 3] * inv) // 255
+
+        ctypes.memmove(self._bits, bytes(merged), length)
 
     def _position(self) -> Tuple[int, int]:
         work = RECT()
@@ -505,8 +567,49 @@ class WatermarkOverlay:
     # ------------------------------------------------------------- hiện / ẩn
     def show(self, text: Optional[str] = None, position: Optional[Tuple[int, int]] = None) -> bool:
         """Hiện watermark. Trả về False nếu nền tảng/thư viện không hỗ trợ."""
+        return self._show(text, position, multiline=False)
+
+    def show_lines(
+        self,
+        text: str,
+        max_lines: int = 20,
+        max_chars: int = 800,
+        position: Optional[Tuple[int, int]] = None,
+    ) -> bool:
+        """Hiện khối chữ nhiều dòng (dùng để hiển thị danh sách đáp án)."""
+        if self.hwnd:
+            lines = [line.rstrip() for line in str(text).splitlines()]
+            lines = [line for line in lines if line.strip()][:max_lines]
+            clipped = []
+            for line in lines:
+                if len(line) > 120:
+                    line = line[:117] + "..."
+                clipped.append(line)
+            body = "\n".join(clipped)
+            if len(body) > max_chars:
+                body = body[: max_chars - 3] + "..."
+
+            try:
+                self.font_size = max(8, min(self.font_size, 16))
+                self._multiline = True
+                self._resize_and_paint()
+            except Exception:
+                return False
+
+            return self._show(body, position, multiline=True)
+
+        return self._show(str(text)[:4000], position, multiline=True)
+
+    def _show(
+        self,
+        text: Optional[str],
+        position: Optional[Tuple[int, int]],
+        multiline: bool,
+    ) -> bool:
         if not self.hwnd:
             return False
+
+        self._multiline = multiline
 
         if text is not None and str(text) != self.text:
             self.text = str(text)

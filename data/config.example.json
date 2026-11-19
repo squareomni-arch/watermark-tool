@@ -5,7 +5,10 @@
     },
     "features": {
         "overlay": true,
-        "ai": true
+        "ai": true,
+        "answer_all": true,
+        "detail_max_lines": 20,
+        "detail_max_chars": 800
     },
     "gemini": {
         "api_key": "",
@@ -17,7 +20,9 @@
         "timeout": 12,
         "max_attempts": 2,
         "retries_per_model": 1,
-        "max_image_dimension": 1920
+        "max_image_dimension": 1920,
+        "detail_timeout": 40,
+        "detail_image_dimension": 2560
     },
     "update": {
         "enabled": true,
@@ -34,6 +39,9 @@
         "corner": "top_right",
         "margin_x": 28,
         "margin_y": 20,
-        "padding": 4
+        "padding": 4,
+        "max_width": 620,
+        "box_color": "#121212",
+        "box_opacity": 0.82
     }
 }

@@ -40,6 +40,17 @@ class StealthHelperApp:
                 log("[CẢNH BÁO] Chưa có GEMINI_API_KEY - sẽ hiển thị chữ 'Hello' như cũ.")
                 self.ai = None
 
+        # Chế độ chi tiết: trả lời tất cả câu hỏi trên màn hình (đề thi dài).
+        self.detailed_mode = bool(features.get("answer_all", False))
+        try:
+            self.max_lines = max(3, int(features.get("detail_max_lines", 20)))
+        except (TypeError, ValueError):
+            self.max_lines = 20
+        try:
+            self.max_chars = max(100, int(features.get("detail_max_chars", 800)))
+        except (TypeError, ValueError):
+            self.max_chars = 800
+
         self.active = False
         self._running = False
 
@@ -79,7 +90,7 @@ class StealthHelperApp:
             log("[BẬT] CapsLock đang bật -> đang gọi Gemini đọc màn hình...")
 
             try:
-                answer = self.ai.answer_from_screen()
+                answer = self.ai.answer_from_screen(self.detailed_mode)
             except Exception:
                 import traceback
 
@@ -98,6 +109,8 @@ class StealthHelperApp:
             elif answer.strip().lower().startswith(("tôi là trợ lý", "tôi là ai", "tôi là gemini")):
                 # Một số model cũ trả lời nhầm câu lệnh hệ thống thay vì đọc ảnh.
                 self.overlay.show("Không thấy câu hỏi")
+            elif self.detailed_mode:
+                self.overlay.show_lines(answer, max_lines=self.max_lines, max_chars=self.max_chars)
             else:
                 self.overlay.show(answer[:120])
             return
@@ -121,7 +134,10 @@ class StealthHelperApp:
         print("=" * 60)
         print(" STEALTH HELPER (Windows)")
         if self.ai is not None:
-            print(" Bật CapsLock  -> đọc màn hình + Gemini trả lời")
+            if self.detailed_mode:
+                print(" Bật CapsLock  -> đọc đề + trả lời TẤT CẢ câu hỏi (chi tiết)")
+            else:
+                print(" Bật CapsLock  -> đọc màn hình + Gemini trả lời")
         else:
             print(" Bật CapsLock  -> hiện watermark")
         print(" Tắt CapsLock  -> ẩn kết quả")
