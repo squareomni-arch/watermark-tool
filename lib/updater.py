@@ -34,6 +34,8 @@ import zipfile
 from pathlib import Path
 from typing import Dict, Optional
 
+from .http_utils import urlopen
+
 _IS_WINDOWS = sys.platform.startswith("win")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -217,7 +219,7 @@ class Updater:
                     url,
                     headers={"User-Agent": "StealthHelper-Updater/1.0"},
                 )
-                with urllib.request.urlopen(request, timeout=15) as response:
+                with urlopen(request, timeout=15) as response:
                     data = json.loads(response.read().decode("utf-8"))
 
                 version = str(data.get("version") or "").strip()
@@ -301,7 +303,7 @@ class Updater:
             url,
             headers={"User-Agent": "StealthHelper-Updater/1.0"},
         )
-        with urllib.request.urlopen(request, timeout=120) as response:
+        with urlopen(request, timeout=120) as response:
             with open(destination, "wb") as handle:
                 shutil.copyfileobj(response, handle)
 

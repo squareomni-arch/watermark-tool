@@ -19,6 +19,8 @@ import urllib.parse
 import urllib.request
 from typing import Dict, Optional
 
+from .http_utils import urlopen
+
 DEFAULT_MODEL = "gemini-flash-lite-latest"
 # Nếu model chính bận / không còn được hỗ trợ thì thử lần lượt các model này.
 DEFAULT_FALLBACK_MODELS = [
@@ -136,7 +138,7 @@ class GeminiHelper:
         )
 
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            with urlopen(request, timeout=self.timeout) as response:
                 body = response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
