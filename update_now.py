@@ -36,6 +36,8 @@ if str(BASE_DIR) not in sys.path:
 
 from lib.http_utils import urlopen  # noqa: E402
 
+GITHUB_REPO = "squareomni-arch/watermark-tool"
+RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 MANIFEST_URL = "https://raw.githubusercontent.com/squareomni-arch/watermark-tool/main/dist/version.json"
 
 PROTECTED_RELATIVE_PATHS = {
@@ -55,6 +57,31 @@ def fetch_json(url: str) -> dict:
     )
     with urlopen(request, timeout=30) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _parse_release_from_api(data: dict) -> tuple:
+    """Lấy (version, download_url, notes) từ dữ liệu GitHub Release API."""
+    version = str(data.get("tag_name") or data.get("name") or "").strip()
+    version = version.lstrip("vV")
+    notes = str(data.get("body") or data.get("name") or "").strip()
+
+    download_url = ""
+    assets = data.get("assets") or []
+    for asset in assets:
+        name = str(asset.get("name") or "")
+        if name.lower().endswith(".zip"):
+            download_url = str(asset.get("browser_download_url") or "").strip()
+            break
+
+    return version, download_url, notes
+
+
+def _parse_release_from_manifest(data: dict) -> tuple:
+    version = str(data.get("version") or "").strip()
+    version = version.lstrip("vV")
+    download_url = str(data.get("download_url") or "").strip()
+    notes = str(data.get("notes") or "").strip()
+    return version, download_url, notes
 
 
 def download_file(url: str, destination: Path) -> None:
@@ -146,18 +173,36 @@ def main() -> int:
     print(" STEALTH HELPER - CẬP NHẬT BẰNG TAY")
     print("=" * 60)
 
-    try:
-        manifest = fetch_json(args.manifest_url)
-    except Exception as exc:
-        print(f"[ERROR] Không tải được manifest: {exc}")
-        return 1
+    version = ""
+    download_url = ""
+    notes = ""
 
-    version = str(manifest.get("version") or "").strip()
-    download_url = str(manifest.get("download_url") or "").strip()
-    notes = str(manifest.get("notes") or "").strip()
+    if args.manifest_url and args.manifest_url != MANIFEST_URL:
+        # Người dùng chỉ định file manifest khác -> ưu tiên dùng đúng file đó.
+        try:
+            data = fetch_json(args.manifest_url)
+            version, download_url, notes = _parse_release_from_manifest(data)
+        except Exception as exc:
+            print(f"[ERROR] Không tải được manifest: {exc}")
+            return 1
+    else:
+        # Mặc định ưu tiên GitHub API vì không bị cache như raw.githubusercontent.
+        try:
+            data = fetch_json(RELEASES_API_URL)
+            version, download_url, notes = _parse_release_from_api(data)
+        except Exception as exc:
+            print(f"[WARNING] Không đọc được GitHub API ({exc}). Thử manifest...")
+
+        if not download_url:
+            try:
+                data = fetch_json(args.manifest_url or MANIFEST_URL)
+                version, download_url, notes = _parse_release_from_manifest(data)
+            except Exception as exc:
+                print(f"[ERROR] Không tải được manifest: {exc}")
+                return 1
 
     if not version or not download_url:
-        print("[ERROR] Manifest thiếu version/download_url.")
+        print("[ERROR] Không lấy được version/download_url.")
         return 1
 
     print(f"Bản mới nhất: v{version}")

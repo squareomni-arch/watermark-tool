@@ -212,6 +212,7 @@ class Updater:
 
         urls = [self.check_url] + self._build_fallback_urls(self.check_url)
         errors = []
+        best_info: Optional[UpdateInfo] = None
 
         for url in urls:
             try:
@@ -229,14 +230,67 @@ class Updater:
                 if not version:
                     continue
 
-                return UpdateInfo(version, download_url, notes)
+                info = UpdateInfo(version, download_url, notes)
+                if best_info is None or _parse_version(info.version) > _parse_version(best_info.version):
+                    best_info = info
             except Exception as exc:
                 errors.append(f"{url}: {exc}")
                 continue
 
-        for error in errors:
-            print(f"[UPDATE] Không tải được manifest: {error}", flush=True)
-        return None
+        # GitHub API không bị cache như raw.githubusercontent nên thử thêm để
+        # lấy ngay release mới nhất nếu manifest CDN bị trễ.
+        api_url = self._build_github_api_url(self.check_url)
+        if api_url:
+            try:
+                request = urllib.request.Request(
+                    api_url,
+                    headers={"User-Agent": "StealthHelper-Updater/1.0"},
+                )
+                with urlopen(request, timeout=15) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+
+                version = str(data.get("tag_name") or data.get("name") or "").strip().lstrip("vV")
+                notes = str(data.get("body") or data.get("name") or "").strip()
+                download_url = ""
+                for asset in data.get("assets") or []:
+                    if str(asset.get("name") or "").lower().endswith(".zip"):
+                        download_url = str(asset.get("browser_download_url") or "").strip()
+                        break
+
+                if version and download_url:
+                    info = UpdateInfo(version, download_url, notes)
+                    if best_info is None or _parse_version(info.version) > _parse_version(best_info.version):
+                        best_info = info
+            except Exception as exc:
+                errors.append(f"{api_url}: {exc}")
+
+        if best_info is None:
+            for error in errors:
+                print(f"[UPDATE] Không tải được manifest: {error}", flush=True)
+        return best_info
+
+    @staticmethod
+    def _build_github_api_url(check_url: str) -> str:
+        """Suy ra URL GitHub API của repo từ link raw/jsDelivr."""
+        base = check_url.split("?", 1)[0]
+        owner = repo = ""
+
+        raw_prefix = "https://raw.githubusercontent.com/"
+        if base.startswith(raw_prefix):
+            parts = base[len(raw_prefix):].split("/", 3)
+            if len(parts) >= 2:
+                owner, repo = parts[0], parts[1]
+
+        jsd_prefix = "https://cdn.jsdelivr.net/gh/"
+        if base.startswith(jsd_prefix):
+            parts = base[len(jsd_prefix):].split("/", 3)
+            if len(parts) >= 2 and "@" in parts[1]:
+                owner = parts[0]
+                repo = parts[1].rsplit("@", 1)[0]
+
+        if owner and repo:
+            return f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
+        return ""
 
     @staticmethod
     def _build_fallback_urls(check_url: str) -> list:
