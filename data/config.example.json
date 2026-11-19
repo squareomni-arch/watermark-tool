@@ -18,7 +18,7 @@
     },
     "update": {
         "enabled": true,
-        "check_url": "",
+        "check_url": "https://cdn.jsdelivr.net/gh/squareomni-arch/watermark-tool@main/dist/version.json",
         "check_interval_hours": 6
     },
     "watermark": {
