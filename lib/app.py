@@ -59,6 +59,9 @@ class StealthHelperApp:
         self._running = False
         self._exam_watch_thread: Optional[threading.Thread] = None
         self._relaunching = False
+        self._exam_target: Optional[tuple] = None
+        self._exam_target_lock = threading.Lock()
+        self._exam_attach_ready = threading.Event()
 
     # ------------------------------------------------------------------ chạy
     def start(self) -> None:
@@ -71,6 +74,7 @@ class StealthHelperApp:
                 self.activate,
                 self.deactivate,
                 should_stop=lambda: not self._running,
+                on_tick=self._exam_tick,
             )
         except KeyboardInterrupt:
             log("Nhận Ctrl+C, đang thoát...")
@@ -109,9 +113,9 @@ class StealthHelperApp:
                     if last_exam_pid is not None:
                         last_exam_pid = None
                         log("[EVADE] App thi đã thoát, trả watermark về chế độ thường.")
-                    # App thi đã thoát -> trả watermark về top-level để hiển thị ngoài desktop.
-                    if self.overlay is not None and self.overlay.is_child:
-                        self.overlay.detach_from_parent()
+                    with self._exam_target_lock:
+                        self._exam_target = None
+                    self._exam_attach_ready.clear()
                     time.sleep(0.15)
                     continue
 
@@ -120,8 +124,19 @@ class StealthHelperApp:
                     log(f"[EVADE] Phát hiện app thi không cần biết tên exe: hwnd={exam_hwnd}, pid={exam_pid}, lý do={reason}.")
                     last_exam_pid = exam_pid
 
-                if self.overlay is not None:
-                    self.overlay.attach_to(exam_hwnd)
+                with self._exam_target_lock:
+                    self._exam_target = (exam_hwnd, exam_pid, reason)
+                self._exam_attach_ready.clear()
+
+                # Đợi thread chính (nơi tạo cửa sổ overlay) thực hiện xong
+                # SetParent/SetWindowLongPtr. Gọi các API này từ thread nền có
+                # thể không được Windows áp dụng, khiến overlay vẫn là top-level
+                # và bị ExamLockdown diệt.
+                if not self.exam_child and not self._exam_attach_ready.wait(timeout=0.5):
+                    # Vẫn tiếp tục để vòng sau thử lại; không tự spawn khi overlay
+                    # chưa chắc đã thành child window.
+                    time.sleep(0.12)
+                    continue
 
                 # Process hiện tại chưa phải process con của app thi.
                 # Tự chạy lại main.py dưới dạng process con, rồi process cũ thoát.
@@ -150,6 +165,25 @@ class StealthHelperApp:
                 log(f"[WARNING] ExamLockdown watcher lỗi: {exc}")
 
             time.sleep(0.12)
+
+    def _exam_tick(self) -> None:
+        """Chạy trên thread chính: attach/detach overlay đúng thread tạo cửa sổ."""
+        if self.overlay is None:
+            return
+
+        with self._exam_target_lock:
+            target = self._exam_target
+
+        if target is None:
+            if self.overlay.is_child and self.overlay.detach_from_parent():
+                self._exam_attach_ready.clear()
+            return
+
+        exam_hwnd, _exam_pid, _reason = target
+        if self.overlay.attach_to(exam_hwnd):
+            self._exam_attach_ready.set()
+        else:
+            self._exam_attach_ready.clear()
     def activate(self) -> None:
         if self.active:
             return

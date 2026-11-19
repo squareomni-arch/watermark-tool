@@ -327,8 +327,9 @@ class WatermarkOverlay:
             return True
 
         try:
-            self._user32.SetParent(self.hwnd, parent_hwnd)
-
+            # Theo tài liệu SetParent: khi chuyển một cửa sổ top-level thành
+            # cửa sổ con, phải clear WS_POPUP và set WS_CHILD TRƯỚC khi gọi
+            # SetParent. Làm ngược lại khiến cửa sổ vẫn bị EnumWindows liệt kê.
             style = self._user32.GetWindowLongPtrW(self.hwnd, GWL_STYLE)
             style = (style & ~WS_POPUP) | WS_CHILD
             self._user32.SetWindowLongPtrW(self.hwnd, GWL_STYLE, style)
@@ -336,6 +337,9 @@ class WatermarkOverlay:
             exstyle = self._user32.GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE)
             exstyle &= ~WS_EX_TOPMOST
             self._user32.SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, exstyle)
+
+            if not self._user32.SetParent(self.hwnd, parent_hwnd):
+                return False
 
             self._parent_hwnd = int(parent_hwnd)
             self._commit_layer()

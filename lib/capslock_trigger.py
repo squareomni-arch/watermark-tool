@@ -56,17 +56,28 @@ class CapsLockTrigger:
         on_activate: Callable[[], None],
         on_deactivate: Callable[[], None],
         should_stop: Optional[Callable[[], bool]] = None,
+        on_tick: Optional[Callable[[], None]] = None,
     ) -> None:
         """Lặp vô hạn, chỉ gọi callback khi trạng thái CapsLock thay đổi.
 
         Lần đọc đầu tiên luôn được đồng bộ: nếu CapsLock đang bật thì app
         được bật ngay, nếu đang tắt thì app ở trạng thái dừng.
+
+        `on_tick` (nếu có) chạy mỗi vòng lặp trên chính thread đang gọi
+        listen. Dùng để làm các việc bắt buộc phải chạy đúng thread tạo
+        cửa sổ overlay, ví dụ SetParent/SetWindowLongPtr.
         """
         active: Optional[bool] = None
 
         while True:
             if should_stop is not None and should_stop():
                 return
+
+            if on_tick is not None:
+                try:
+                    on_tick()
+                except Exception:
+                    pass
 
             state = self.is_on()
 

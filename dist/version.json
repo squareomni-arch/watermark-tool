@@ -1,5 +1,5 @@
 {
-  "version": "1.1.6",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.6/watermark-tool-1.1.6.zip",
-  "notes": "Phat hien app thi bang WDA/fullscreen kiosk, khong phu thuoc ten exe"
+  "version": "1.1.7",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.7/watermark-tool-1.1.7.zip",
+  "notes": "Sua loi SetParent sai thu tu khien overlay van la top-level va bi ExamLockdown kill"
 }
