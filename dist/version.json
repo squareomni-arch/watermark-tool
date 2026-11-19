@@ -1,5 +1,5 @@
 {
-  "version": "1.0.2",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.0.2/watermark-tool-1.0.2.zip",
-  "notes": "Sua loi Loi AI: doi model Gemini thanh gemini-flash-lite-latest, them model du phong"
+  "version": "1.0.3",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.0.3/watermark-tool-1.0.3.zip",
+  "notes": "Sua auto-update: them log kiem tra, them link jsDelivr du phong"
 }

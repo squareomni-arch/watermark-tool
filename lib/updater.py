@@ -182,11 +182,21 @@ class Updater:
 
         while not self._stop_event.is_set():
             try:
+                print("[UPDATE] Kiểm tra cập nhật...", flush=True)
                 info = self.check_now()
-                if info is not None and _parse_version(info.version) > _parse_version(self.local_version):
+                if info is None:
+                    print("[UPDATE] Không lấy được thông tin bản mới (xem lỗi bên trên nếu có).", flush=True)
+                elif _parse_version(info.version) > _parse_version(self.local_version):
+                    print(f"[UPDATE] Đã có bản mới: v{info.version}", flush=True)
                     self._handle_update(info)
+                else:
+                    print(
+                        f"[UPDATE] Đã là bản mới nhất (máy: v{self.local_version}, "
+                        f"server: v{info.version}).",
+                        flush=True,
+                    )
             except Exception as exc:
-                print(f"[UPDATE] Kiểm tra cập nhật lỗi: {exc}")
+                print(f"[UPDATE] Kiểm tra cập nhật lỗi: {exc}", flush=True)
 
             # Chờ tới lần kiểm tra kế tiếp (có thể bị stop sớm).
             if self._stop_event.wait(self.interval_hours * 3600):
@@ -194,26 +204,56 @@ class Updater:
 
     # ------------------------------------------------------------------ kiểm tra
     def check_now(self) -> Optional[UpdateInfo]:
-        """Tải file version.json từ server. Trả về UpdateInfo nếu có bản mới hơn."""
+        """Tải file version.json từ server. Trả về UpdateInfo nếu đọc được."""
         if not self.check_url:
             return None
 
-        request = urllib.request.Request(
-            self.check_url,
-            headers={"User-Agent": "StealthHelper-Updater/1.0"},
-        )
+        urls = [self.check_url] + self._build_fallback_urls(self.check_url)
+        errors = []
 
-        with urllib.request.urlopen(request, timeout=15) as response:
-            data = json.loads(response.read().decode("utf-8"))
+        for url in urls:
+            try:
+                request = urllib.request.Request(
+                    url,
+                    headers={"User-Agent": "StealthHelper-Updater/1.0"},
+                )
+                with urllib.request.urlopen(request, timeout=15) as response:
+                    data = json.loads(response.read().decode("utf-8"))
 
-        version = str(data.get("version") or "").strip()
-        download_url = str(data.get("download_url") or "").strip()
-        notes = str(data.get("notes") or "").strip()
+                version = str(data.get("version") or "").strip()
+                download_url = str(data.get("download_url") or "").strip()
+                notes = str(data.get("notes") or "").strip()
 
-        if not version:
-            return None
+                if not version:
+                    continue
 
-        return UpdateInfo(version, download_url, notes)
+                return UpdateInfo(version, download_url, notes)
+            except Exception as exc:
+                errors.append(f"{url}: {exc}")
+                continue
+
+        for error in errors:
+            print(f"[UPDATE] Không tải được manifest: {error}", flush=True)
+        return None
+
+    @staticmethod
+    def _build_fallback_urls(check_url: str) -> list:
+        """Thêm URL jsDelivr cho link raw.githubusercontent.com khi bị chặn."""
+        fallbacks = []
+        try:
+            # https://raw.githubusercontent.com/OWNER/REPO/BRANCH/PATH
+            prefix = "https://raw.githubusercontent.com/"
+            if check_url.startswith(prefix):
+                rest = check_url[len(prefix):]
+                parts = rest.split("/", 3)
+                if len(parts) >= 4:
+                    owner, repo, branch, path = parts
+                    fallbacks.append(
+                        f"https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}"
+                    )
+        except Exception:
+            pass
+        return fallbacks
 
     # ------------------------------------------------------------------ xử lý
     def _handle_update(self, info: UpdateInfo) -> None:
