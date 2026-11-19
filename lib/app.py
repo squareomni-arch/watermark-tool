@@ -184,6 +184,8 @@ class StealthHelperApp:
             self._exam_attach_ready.set()
         else:
             self._exam_attach_ready.clear()
+            if self.overlay.hwnd:
+                log("[EVADE] Không gắn được watermark vào cửa sổ app thi (SetParent thất bại).")
     def activate(self) -> None:
         if self.active:
             return

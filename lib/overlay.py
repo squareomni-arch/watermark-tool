@@ -338,7 +338,11 @@ class WatermarkOverlay:
             exstyle &= ~WS_EX_TOPMOST
             self._user32.SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, exstyle)
 
-            if not self._user32.SetParent(self.hwnd, parent_hwnd):
+            # KHÔNG kiểm tra giá trị trả về của SetParent: với cửa sổ top-level,
+            # SetParent thành công trả về parent CŨ là NULL, giống hệt lỗi.
+            # Phải kiểm tra parent thực tế sau khi gọi.
+            self._user32.SetParent(self.hwnd, parent_hwnd)
+            if int(self._user32.GetParent(self.hwnd) or 0) != int(parent_hwnd):
                 return False
 
             self._parent_hwnd = int(parent_hwnd)
@@ -405,6 +409,8 @@ class WatermarkOverlay:
         ]
         user32.SetParent.restype = ctypes.c_void_p
         user32.SetParent.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        user32.GetParent.restype = ctypes.c_void_p
+        user32.GetParent.argtypes = [ctypes.c_void_p]
         user32.IsWindow.restype = wintypes.BOOL
         user32.IsWindow.argtypes = [ctypes.c_void_p]
         user32.GetClientRect.restype = wintypes.BOOL

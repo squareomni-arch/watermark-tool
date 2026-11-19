@@ -1,5 +1,5 @@
 {
-  "version": "1.1.7",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.7/watermark-tool-1.1.7.zip",
-  "notes": "Sua loi SetParent sai thu tu khien overlay van la top-level va bi ExamLockdown kill"
+  "version": "1.1.8",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.8/watermark-tool-1.1.8.zip",
+  "notes": "Sua kiem tra SetParent sai: top-level SetParent thanh cong cung tra ve NULL"
 }
