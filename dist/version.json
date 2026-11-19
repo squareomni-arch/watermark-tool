@@ -1,5 +1,5 @@
 {
-  "version": "1.1.11",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.11/watermark-tool-1.1.11.zip",
-  "notes": "Them diagnostic watcher ghi log tu dong, khong can mo terminal giua gio thi"
+  "version": "1.1.12",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.12/watermark-tool-1.1.12.zip",
+  "notes": "Ghi log chinh xac vao data/exam_evade.log truoc khi bi ExamLockdown kill"
 }

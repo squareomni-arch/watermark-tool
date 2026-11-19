@@ -7,6 +7,7 @@ CapsLock TẮT  -> app dừng: ẩn watermark
 from __future__ import annotations
 
 import os
+import sys
 import threading
 import time
 from pathlib import Path
@@ -16,9 +17,22 @@ from .capslock_trigger import CapsLockTrigger
 from .gemini_helper import GeminiHelper, ScreenCaptureBlockedError
 from .overlay import WatermarkOverlay
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+EVADE_LOG_FILE = BASE_DIR / "data" / "exam_evade.log"
+
 
 def log(message: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {message}", flush=True)
+
+
+def _evade_log(message: str) -> None:
+    """Ghi log chẩn đoán trực tiếp ra file, không phụ thuộc console/pythonw stdout."""
+    try:
+        EVADE_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(EVADE_LOG_FILE, "a", encoding="utf-8") as handle:
+            handle.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {message}\n")
+    except OSError:
+        pass
 
 
 class StealthHelperApp:
@@ -66,6 +80,15 @@ class StealthHelperApp:
 
     # ------------------------------------------------------------------ chạy
     def start(self) -> None:
+        _evade_log(
+            "=" * 72
+            + f"\nSTART pid={os.getpid()} parent={os.getppid()} exam_child={self.exam_child}"
+            + f"\nexecutable={sys.executable if hasattr(sys, 'executable') else '?'}"
+            + f"\npythonw={'pythonw.exe' in (sys.executable or '').lower()}"
+            + "\n"
+            + "=" * 72
+        )
+
         self._print_banner()
 
         self._running = True
@@ -103,6 +126,7 @@ class StealthHelperApp:
     def _attach_to_current_exam_window(self) -> bool:
         """Tìm app thi đang mở và gắn overlay ngay trên thread chính."""
         if self.overlay is None:
+            _evade_log("ATTACH_AT_START overlay=None")
             return False
 
         try:
@@ -110,11 +134,18 @@ class StealthHelperApp:
 
             found = find_exam_window()
             if found is None:
+                _evade_log("ATTACH_AT_START find_exam_window=None")
                 log("[EVADE] Process con chưa thấy cửa sổ app thi, sẽ chờ watcher.")
                 return False
 
             exam_hwnd, exam_pid, reason = found
-            if not self.overlay.attach_to(exam_hwnd):
+            ok = self.overlay.attach_to(exam_hwnd)
+            parent = self._overlay_parent_hwnd()
+            _evade_log(
+                f"ATTACH_AT_START hwnd={exam_hwnd} pid={exam_pid} reason={reason} "
+                f"attach={ok} child={self.overlay.is_child} getparent={parent} match={parent == exam_hwnd}"
+            )
+            if not ok:
                 log(f"[EVADE] Process con không gắn được vào hwnd={exam_hwnd}, pid={exam_pid}.")
                 return False
 
@@ -122,8 +153,24 @@ class StealthHelperApp:
             log(f"[EVADE] Process con đã gắn watermark vào cửa sổ app thi hwnd={exam_hwnd}, pid={exam_pid}.")
             return True
         except Exception as exc:
+            _evade_log(f"ATTACH_AT_START ERROR {exc!r}")
             log(f"[EVADE] Lỗi khi gắn process con: {exc}")
             return False
+
+    def _overlay_parent_hwnd(self) -> Optional[int]:
+        """Đọc parent thực tế của cửa sổ overlay qua GetParent."""
+        if self.overlay is None or not self.overlay.hwnd:
+            return None
+        try:
+            import ctypes
+
+            user32 = ctypes.WinDLL("user32")
+            user32.GetParent.restype = ctypes.c_void_p
+            user32.GetParent.argtypes = [ctypes.c_void_p]
+            parent = int(user32.GetParent(ctypes.c_void_p(self.overlay.hwnd)) or 0)
+            return parent or None
+        except Exception:
+            return None
 
     def _start_exam_watcher(self) -> None:
         self._exam_watch_thread = threading.Thread(
@@ -134,7 +181,7 @@ class StealthHelperApp:
         self._exam_watch_thread.start()
 
     def _exam_watch_loop(self) -> None:
-        from .exam_evasion import find_exam_window, spawn_as_child_of
+        from .exam_evasion import find_exam_window, get_parent_pid, spawn_as_child_of
 
         pid_file = Path(__file__).resolve().parent.parent / "data" / "stealth_helper.pid"
         last_exam_pid: Optional[int] = None
@@ -145,6 +192,7 @@ class StealthHelperApp:
                 if found is None:
                     if last_exam_pid is not None:
                         last_exam_pid = None
+                        _evade_log("EXAM_GONE")
                         log("[EVADE] App thi đã thoát, trả watermark về chế độ thường.")
                     with self._exam_target_lock:
                         self._exam_target = None
@@ -154,8 +202,12 @@ class StealthHelperApp:
 
                 exam_hwnd, exam_pid, reason = found
                 if exam_pid != last_exam_pid:
-                    log(f"[EVADE] Phát hiện app thi không cần biết tên exe: hwnd={exam_hwnd}, pid={exam_pid}, lý do={reason}.")
                     last_exam_pid = exam_pid
+                    _evade_log(
+                        f"EXAM_FOUND hwnd={exam_hwnd} pid={exam_pid} reason={reason} "
+                        f"self_pid={os.getpid()} self_parent={os.getppid()}"
+                    )
+                    log(f"[EVADE] Phát hiện app thi không cần biết tên exe: hwnd={exam_hwnd}, pid={exam_pid}, lý do={reason}.")
 
                 with self._exam_target_lock:
                     self._exam_target = (exam_hwnd, exam_pid, reason)
@@ -187,14 +239,23 @@ class StealthHelperApp:
                             if old_pid == os.getpid():
                                 pid_file.unlink()
 
+                        _evade_log(f"SPAWN_CHILD exam_pid={exam_pid} exam_hwnd={exam_hwnd}")
                         child_pid = spawn_as_child_of(exam_pid)
+                        time.sleep(0.3)
+                        tool_parent = get_parent_pid(child_pid)
+                        _evade_log(
+                            f"SPAWNED child_pid={child_pid} toolhelp_parent={tool_parent} "
+                            f"match_exam_pid={tool_parent == exam_pid}"
+                        )
                         log(f"[EVADE] Đã chạy lại dưới dạng process con của app thi (pid {child_pid}).")
                         self._relaunching = True
                         self._running = False
                         return
                     except Exception as exc:
+                        _evade_log(f"SPAWN_FAILED exam_pid={exam_pid} error={exc!r}")
                         log(f"[WARNING] Không chạy lại được process con: {exc}")
             except Exception as exc:
+                _evade_log(f"WATCH_ERROR {exc!r}")
                 log(f"[WARNING] ExamLockdown watcher lỗi: {exc}")
 
             time.sleep(0.12)
@@ -213,8 +274,14 @@ class StealthHelperApp:
                 self._exam_attach_ready.clear()
             return
 
-        exam_hwnd, _exam_pid, _reason = target
-        if self.overlay.attach_to(exam_hwnd):
+        exam_hwnd, exam_pid, _reason = target
+        ok = self.overlay.attach_to(exam_hwnd)
+        parent = self._overlay_parent_hwnd()
+        _evade_log(
+            f"EXAM_TICK hwnd={exam_hwnd} pid={exam_pid} attach={ok} "
+            f"child={self.overlay.is_child} getparent={parent} match={parent == exam_hwnd}"
+        )
+        if ok:
             self._exam_attached = True
             self._exam_attach_ready.set()
             # Nếu CapsLock đang bật nhưng lúc trước ta cố tình chưa show để tránh
@@ -238,6 +305,7 @@ class StealthHelperApp:
         # Process con của app thi: không được show overlay lúc nó còn là
         # top-level window. Đợi _exam_tick gắn xong rồi mới show.
         if self.exam_child and not self._exam_attached:
+            _evade_log(f"ACTIVATE_WAIT_ATTACH active={self.active} overlay_active={self.overlay.active}")
             log("[BẬT] CapsLock đang bật, chờ gắn watermark vào cửa sổ app thi.")
             return
 
