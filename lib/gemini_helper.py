@@ -211,6 +211,7 @@ class GeminiHelper:
         ExamLockdown sẽ không phát hiện tamper và không làm hỏng submit.
         """
         if not sys.platform.startswith("win"):
+            print("[CAPTURE] Không phải Windows, bỏ PrintWindow.", flush=True)
             return None
 
         try:
@@ -218,21 +219,28 @@ class GeminiHelper:
                 capture_hwnd_via_printwindow,
                 find_exam_content_window,
             )
-        except Exception:
+        except Exception as exc:
+            print(f"[CAPTURE] Không import screen_capture: {exc!r}", flush=True)
             return None
 
         exam_hwnd = self._exam_capture_hwnd
         if exam_hwnd is None:
+            print("[CAPTURE] Chưa có _exam_capture_hwnd, bỏ PrintWindow.", flush=True)
             return None
 
+        print(f"[CAPTURE] Tìm child window của hwnd={exam_hwnd}...", flush=True)
         child_hwnd = find_exam_content_window(exam_hwnd) or exam_hwnd
+        print(f"[CAPTURE] Dùng hwnd={child_hwnd} để PrintWindow.", flush=True)
         image = capture_hwnd_via_printwindow(child_hwnd)
         if image is None:
+            print("[CAPTURE] PrintWindow trả về None.", flush=True)
             return None
 
         image = image.convert("RGB")
         if self._is_black_screenshot(image):
+            print("[CAPTURE] PrintWindow trả về ảnh đen.", flush=True)
             return None
+        print("[CAPTURE] PrintWindow thành công.", flush=True)
         return image
 
     def _capture_screen_as_jpeg_b64(self, detailed: bool = False) -> Optional[str]:
@@ -268,9 +276,13 @@ class GeminiHelper:
                 self._temporarily_unlocked_windows = unlocked
                 try:
                     try:
+                        print("[CAPTURE] Đang gọi ImageGrab.grab()...", flush=True)
                         image = ImageGrab.grab()
+                        print("[CAPTURE] ImageGrab.grab() đã trả về.", flush=True)
                     finally:
+                        print("[CAPTURE] Đang khôi phục WDA...", flush=True)
                         self.restore_capture_protection_now()
+                        print("[CAPTURE] Đã khôi phục WDA.", flush=True)
                 except OSError as exc:
                     raise ScreenCaptureBlockedError(
                         f"Windows không cho phép chụp màn hình lúc này: {exc}"
