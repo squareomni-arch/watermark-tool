@@ -1,5 +1,5 @@
 {
-  "version": "1.1.29",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.29/watermark-tool-1.1.29.zip",
-  "notes": "Chup WebView2 bang PrintWindow khong can go WDA, tranh lam hong submit"
+  "version": "1.1.30",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.30/watermark-tool-1.1.30.zip",
+  "notes": "Dung dung HWND app thi cho PrintWindow, khong goi SetWindowDisplayAffinity hay scan he thong trong luc submit"
 }

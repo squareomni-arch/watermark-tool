@@ -350,12 +350,17 @@ class StealthHelperApp:
             target = self._exam_target
 
         if target is None:
+            if self.ai is not None:
+                self.ai._exam_capture_hwnd = None
             if self.overlay.is_child and self.overlay.detach_from_parent():
                 self._exam_attached = False
                 self._exam_attach_ready.clear()
             return
 
         exam_hwnd, exam_pid, _reason = target
+        if self.ai is not None:
+            self.ai._exam_capture_hwnd = exam_hwnd
+
         ok = self.overlay.attach_to(exam_hwnd)
         parent = self._overlay_parent_hwnd()
         _evade_log(
@@ -404,6 +409,10 @@ class StealthHelperApp:
 
         if target is None:
             return True
+
+        # Cung cấp HWND cho GeminiHelper để chụp bằng PrintWindow.
+        if self.ai is not None:
+            self.ai._exam_capture_hwnd = int(target[0])
 
         self._exam_tick()
         return self._exam_attached

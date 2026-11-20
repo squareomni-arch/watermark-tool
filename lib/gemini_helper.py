@@ -132,6 +132,7 @@ class GeminiHelper:
 
         self.available = bool(self.api_key)
         self._temporarily_unlocked_windows: list = []
+        self._exam_capture_hwnd: Optional[int] = None
 
     # ------------------------------------------------------------------ chụp ảnh
     @staticmethod
@@ -213,7 +214,6 @@ class GeminiHelper:
             return None
 
         try:
-            from .exam_evasion import find_exam_window
             from .screen_capture import (
                 capture_hwnd_via_printwindow,
                 find_exam_content_window,
@@ -221,11 +221,10 @@ class GeminiHelper:
         except Exception:
             return None
 
-        found = find_exam_window()
-        if found is None:
+        exam_hwnd = self._exam_capture_hwnd
+        if exam_hwnd is None:
             return None
 
-        exam_hwnd = int(found[0])
         child_hwnd = find_exam_content_window(exam_hwnd) or exam_hwnd
         image = capture_hwnd_via_printwindow(child_hwnd)
         if image is None:
