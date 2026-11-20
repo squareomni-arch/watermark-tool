@@ -181,10 +181,16 @@ class StealthHelperApp:
         self._exam_watch_thread.start()
 
     def _exam_watch_loop(self) -> None:
-        from .exam_evasion import find_exam_window, get_parent_pid, spawn_as_child_of
+        from .exam_evasion import (
+            find_exam_window,
+            get_parent_pid,
+            list_visible_window_scores,
+            spawn_as_child_of,
+        )
 
         pid_file = Path(__file__).resolve().parent.parent / "data" / "stealth_helper.pid"
         last_exam_pid: Optional[int] = None
+        last_candidate_log = 0.0
 
         while self._running:
             try:
@@ -197,8 +203,35 @@ class StealthHelperApp:
                     with self._exam_target_lock:
                         self._exam_target = None
                     self._exam_attach_ready.clear()
+
+                    # Ghi log ứng viên mỗi 3 giây nếu không nhận diện được app thi.
+                    now = time.monotonic()
+                    if now - last_candidate_log >= 3.0:
+                        last_candidate_log = now
+                        rows = list_visible_window_scores(limit=12)
+                        _evade_log("NO_EXAM candidates: " + repr(rows))
+
                     time.sleep(0.15)
                     continue
+
+                exam_hwnd, exam_pid, reason = found
+                if exam_pid != last_exam_pid:
+                    last_exam_pid = exam_pid
+                    _evade_log(
+                        f"EXAM_FOUND hwnd={exam_hwnd} pid={exam_pid} reason={reason} "
+                        f"self_pid={os.getpid()} self_parent={os.getppid()}"
+                    )
+                    log(f"[EVADE] Phát hiện app thi không cần biết tên exe: hwnd={exam_hwnd}, pid={exam_pid}, lý do={reason}.")
+
+                # Ẩn ngay lập tức nếu watermark đang hiện: ExamLockdown preflight
+                # quét mọi top-level window visible, không chỉ trong giờ thi.
+                if self.overlay is not None and self.overlay.active:
+                    self.overlay.hide()
+                    _evade_log("HIDE_BEFORE_ATTACH watermark đang hiện -> đã ẩn trước khi gắn child.")
+
+                with self._exam_target_lock:
+                    self._exam_target = (exam_hwnd, exam_pid, reason)
+                self._exam_attach_ready.clear()
 
                 exam_hwnd, exam_pid, reason = found
                 if exam_pid != last_exam_pid:
