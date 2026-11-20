@@ -245,6 +245,8 @@ class StealthHelperApp:
             _evade_log(f"WATCHER_IMPORT_FAILED {exc!r}")
             return
 
+        _evade_log("WATCHER_IMPORT_OK")
+
         last_exam_pid: Optional[int] = None
         last_candidate_log = 0.0
         last_heartbeat_log = 0.0
@@ -326,6 +328,8 @@ class StealthHelperApp:
     def _hide_for_new_windows(self) -> None:
         """Ẩn watermark nếu có cửa sổ top-level mới xuất hiện."""
         try:
+            from .exam_evasion import describe_visible_window, snapshot_visible_windows
+
             for hwnd, pid in snapshot_visible_windows():
                 if hwnd in self._seen_windows:
                     continue

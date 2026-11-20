@@ -342,6 +342,9 @@ def find_fullscreen_candidate_window() -> Optional[Tuple[int, int, str]]:
     best: Optional[Tuple[int, int, str]] = None
     best_area = 0
 
+    # Shell desktop/taskbar phủ fullscreen nhưng không phải app thi.
+    ignored_classes = {"progman", "workerw", "shell_traywnd", "dv2controlhost", "edgeuiinputtopwndclass"}
+
     @WNDENUMPROC
     def _enum(hwnd, _lparam):
         nonlocal best, best_area
@@ -354,6 +357,11 @@ def find_fullscreen_candidate_window() -> Optional[Tuple[int, int, str]]:
         width = max(0, int(rect.right - rect.left))
         height = max(0, int(rect.bottom - rect.top))
         if width <= 0 or height <= 0:
+            return True
+
+        class_buf = ctypes.create_unicode_buffer(256)
+        USER32.GetClassNameW(hwnd, class_buf, len(class_buf))
+        if class_buf.value.lower() in ignored_classes:
             return True
 
         style = int(USER32.GetWindowLongPtrW(hwnd, GWL_STYLE))
