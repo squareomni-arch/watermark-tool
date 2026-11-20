@@ -1,5 +1,5 @@
 {
-  "version": "1.1.27",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.27/watermark-tool-1.1.27.zip",
-  "notes": "Khoi phuc WDA ngay khi CapsLock tat, dung tracklist tam mo"
+  "version": "1.1.28",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.28/watermark-tool-1.1.28.zip",
+  "notes": "Khong show watermark top-level khi app thi dang mo; attach child truoc khi show"
 }

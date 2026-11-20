@@ -209,15 +209,18 @@ class StealthHelperApp:
         # Quan trọng: nếu app thi đã mở trước khi tool chạy, cửa sổ thi nằm
         # trong baseline nên không có sự kiện NEW_WINDOW. Phải xử lý ngay tại
         # đây, trước khi ExamLockdown kịp strict-scan kill overlay top-level.
-        found = find_exam_window()
-        if found is not None:
-            self._handle_exam_found(found, source="BASELINE")
-        else:
-            defensive = find_fullscreen_candidate_window()
-            if defensive is not None:
-                self._hide_overlay_immediately(
-                    "DEFENSIVE_HIDE_FULLSCREEN_BASELINE hwnd={} pid={} reason={}".format(*defensive)
-                )
+        try:
+            found = find_exam_window()
+            if found is not None:
+                self._handle_exam_found(found, source="BASELINE")
+            else:
+                defensive = find_fullscreen_candidate_window()
+                if defensive is not None:
+                    self._hide_overlay_immediately(
+                        "DEFENSIVE_HIDE_FULLSCREEN_BASELINE hwnd={} pid={} reason={}".format(*defensive)
+                    )
+        except Exception as exc:
+            _evade_log(f"PRELOOP_CHECK_FAILED {exc!r}")
 
         while self._running:
             try:
@@ -371,6 +374,40 @@ class StealthHelperApp:
             self._exam_attach_ready.clear()
             if self.overlay.hwnd:
                 log("[EVADE] Không gắn được watermark vào cửa sổ app thi (SetParent thất bại).")
+    def _find_current_exam_window(self):
+        """Trả về (hwnd, pid, reason) nếu app thi đang tồn tại."""
+        try:
+            from .exam_evasion import find_exam_window
+
+            return find_exam_window()
+        except Exception:
+            return None
+
+    def _ensure_attached_to_exam(self) -> bool:
+        """Gắn overlay vào app thi nếu đang có app thi.
+
+        Trả về True khi an toàn để show overlay: không có app thi, hoặc đã
+        gắn thành công dưới dạng child window.
+        """
+        if self.overlay is None:
+            return False
+
+        with self._exam_target_lock:
+            target = self._exam_target
+
+        if target is None:
+            found = self._find_current_exam_window()
+            if found is not None:
+                self._handle_exam_found(found, source="ENSURE")
+                with self._exam_target_lock:
+                    target = self._exam_target
+
+        if target is None:
+            return True
+
+        self._exam_tick()
+        return self._exam_attached
+
     def activate(self) -> None:
         if self.active:
             return
@@ -378,6 +415,13 @@ class StealthHelperApp:
 
         if self.overlay is None:
             log("[BẬT] CapsLock đang bật.")
+            return
+
+        # Không được show top-level khi app thi đang mở: strict scan của
+        # ExamLockdown sẽ kill process. Phải gắn thành child window trước.
+        if not self._ensure_attached_to_exam():
+            _evade_log("ACTIVATE_BLOCKED_NO_CHILD_ATTACH")
+            log("[BẬT] CapsLock đang bật, nhưng chưa gắn được watermark vào app thi.")
             return
 
         if self.ai is not None:
@@ -400,6 +444,12 @@ class StealthHelperApp:
                 self.deactivate()
                 return
 
+            # App thi có thể xuất hiện trong lúc gọi AI. Chỉ hiện kết quả khi
+            # overlay đã là child window, không show top-level trở lại.
+            if not self._ensure_attached_to_exam():
+                _evade_log("ANSWER_BLOCKED_NO_CHILD_ATTACH")
+                return
+
             if answer == "__SCREEN_BLOCKED__":
                 self.overlay.show("Không chụp được màn hình (bị chặn)")
             elif answer is None:
@@ -413,6 +463,10 @@ class StealthHelperApp:
                 self.overlay.show_lines(answer, max_lines=self.max_lines, max_chars=self.max_chars)
             else:
                 self.overlay.show(answer[:120])
+            return
+
+        if not self._ensure_attached_to_exam():
+            _evade_log("SHOW_BLOCKED_NO_CHILD_ATTACH")
             return
 
         self.overlay.show()
