@@ -232,7 +232,7 @@ class StealthHelperApp:
                 found = find_exam_window()
                 if found is not None:
                     self._handle_exam_found(found, source="LOOP")
-                    time.sleep(0.12)
+                    time.sleep(0.02)
                     continue
 
                 # Không thấy app thi: ẩn watermark ngay khi có cửa sổ
@@ -279,11 +279,11 @@ class StealthHelperApp:
                     rows = list_visible_window_scores(limit=12)
                     _evade_log("NO_EXAM candidates: " + repr(rows))
 
-                time.sleep(0.15)
+                time.sleep(0.02)
             except Exception as exc:
                 _evade_log(f"WATCH_ERROR {exc!r}")
                 log(f"[WARNING] ExamLockdown watcher lỗi: {exc}")
-                time.sleep(0.12)
+                time.sleep(0.05)
 
     def _hide_overlay_immediately(self, reason: str) -> None:
         """Ẩn watermark ngay trên thread watcher để chạy đua với ExamLockdown."""

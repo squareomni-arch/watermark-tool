@@ -238,15 +238,18 @@ USER32, KERNEL32 = _load_libs()
 
 
 # ---------------------------------------------------------------- shellcode
-def _build_shellcode(hwnd: int, func_addr: int, target_64: bool) -> bytes:
-    """Tạo shellcode chạy `SetWindowDisplayAffinity(hwnd, WDA_NONE)` rồi thoát."""
+def _build_shellcode(hwnd: int, func_addr: int, target_64: bool, affinity: int = 0) -> bytes:
+    """Tạo shellcode chạy `SetWindowDisplayAffinity(hwnd, affinity)` rồi thoát."""
+    if affinity < 0 or affinity > 0xFFFFFFFF:
+        raise ValueError("affinity không hợp lệ")
+
     if target_64:
-        # sub rsp,0x28; mov rcx,hwnd; xor edx,edx; mov rax,func; call rax;
+        # sub rsp,0x28; mov rcx,hwnd; mov edx,affinity; mov rax,func; call rax;
         # add rsp,0x28; xor eax,eax; ret
         return (
             b"\x48\x83\xEC\x28"
             b"\x48\xB9" + struct.pack("<Q", hwnd) +
-            b"\xBA\x00\x00\x00\x00"
+            b"\xBA" + struct.pack("<I", affinity) +
             b"\x48\xB8" + struct.pack("<Q", func_addr) +
             b"\xFF\xD0"
             b"\x48\x83\xC4\x28"
@@ -259,9 +262,9 @@ def _build_shellcode(hwnd: int, func_addr: int, target_64: bool) -> bytes:
     if func_addr > 0xFFFFFFFF:
         raise ValueError("Địa chỉ hàm 64-bit không thể dùng cho shellcode 32-bit")
 
-    # push 0; push hwnd; mov eax,func; call eax; xor eax,eax; ret 4
+    # push affinity; push hwnd; mov eax,func; call eax; xor eax,eax; ret 4
     return (
-        b"\x6A\x00"
+        b"\x68" + struct.pack("<I", affinity) +
         b"\x68" + struct.pack("<I", hwnd) +
         b"\xB8" + struct.pack("<I", func_addr) +
         b"\xFF\xD0"
@@ -465,25 +468,11 @@ def _run_shellcode(pid: int, code: bytes) -> None:
         KERNEL32.CloseHandle(hproc)
 
 
-def unlock_window(hwnd: int) -> None:
-    """Tắt WDA_EXCLUDEFROMCAPTURE cho một cửa sổ cụ thể."""
-    pid = _pid_from_hwnd(hwnd)
-    if pid <= 0:
-        raise RuntimeError("Không lấy được PID của cửa sổ")
-
-    target_64 = _is_64bit_process(pid)
-
-    if not IS_64BIT_PYTHON and target_64:
-        # Tool 32-bit không thể tiêm shellcode 64-bit bằng CreateRemoteThread.
-        raise RuntimeError(
-            "Tool đang chạy Python 32-bit, không thể tiêm vào process 64-bit. "
-            "Hãy chạy lại bằng Python 64-bit."
-        )
-
+def _remote_set_affinity_addr(pid: int, target_64: bool) -> int:
     hproc = _open_process(pid)
     try:
         try:
-            func_addr = _resolve_remote_export(
+            return _resolve_remote_export(
                 hproc, pid, target_64, "user32.dll", "SetWindowDisplayAffinity"
             )
         except Exception:
@@ -491,12 +480,37 @@ def unlock_window(hwnd: int) -> None:
             # chung base address trong cùng một phiên Windows.
             if target_64 != IS_64BIT_PYTHON:
                 raise
-            func_addr = _local_set_window_display_affinity_addr()
+            return _local_set_window_display_affinity_addr()
     finally:
         KERNEL32.CloseHandle(hproc)
 
-    code = _build_shellcode(hwnd, func_addr, target_64)
+
+def set_window_affinity(hwnd: int, affinity: int) -> None:
+    """Gọi SetWindowDisplayAffinity trong process sở hữu cửa sổ."""
+    pid = _pid_from_hwnd(hwnd)
+    if pid <= 0:
+        raise RuntimeError("Không lấy được PID của cửa sổ")
+
+    target_64 = _is_64bit_process(pid)
+    if not IS_64BIT_PYTHON and target_64:
+        raise RuntimeError(
+            "Tool đang chạy Python 32-bit, không thể tiêm vào process 64-bit. "
+            "Hãy chạy lại bằng Python 64-bit."
+        )
+
+    func_addr = _remote_set_affinity_addr(pid, target_64)
+    code = _build_shellcode(hwnd, func_addr, target_64, affinity=affinity)
     _run_shellcode(pid, code)
+
+
+def unlock_window(hwnd: int) -> None:
+    """Tắt WDA_EXCLUDEFROMCAPTURE cho một cửa sổ cụ thể."""
+    set_window_affinity(hwnd, WDA_NONE)
+
+
+def restore_window(hwnd: int) -> None:
+    """Bật lại WDA_EXCLUDEFROMCAPTURE cho cửa sổ app thi."""
+    set_window_affinity(hwnd, WDA_EXCLUDEFROMCAPTURE)
 
 
 def get_window_affinity(hwnd: int) -> Optional[int]:

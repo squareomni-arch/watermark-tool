@@ -1,5 +1,5 @@
 {
-  "version": "1.1.25",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.25/watermark-tool-1.1.25.zip",
-  "notes": "Bo tao process con cua app thi de khong anh huong app thi; them foreground guard"
+  "version": "1.1.26",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.26/watermark-tool-1.1.26.zip",
+  "notes": "Khoi phuc WDA ngay sau chup de ExamLockdown khong tamper; watcher 20ms"
 }

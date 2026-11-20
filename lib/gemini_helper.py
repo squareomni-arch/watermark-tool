@@ -151,24 +151,43 @@ class GeminiHelper:
             return False
 
     @staticmethod
-    def _unlock_excluded_from_capture() -> bool:
-        """Tắt WDA_EXCLUDEFROMCAPTURE của các cửa sổ khác (best-effort).
+    def _unlock_excluded_from_capture() -> list:
+        """Tạm tắt WDA_EXCLUDEFROMCAPTURE của các cửa sổ đang bảo vệ.
 
-        Nếu ảnh chụp bị đen do app thi tự bật WDA_EXCLUDEFROMCAPTURE, ta cần
-        tiêm shellcode vào process đó để gọi SetWindowDisplayAffinity(WDA_NONE).
-        Trả về True nếu có ít nhất một cửa sổ được mở khoá.
+        Trả về danh sách `{hwnd, pid, ...}` để người gọi bật lại
+        WDA_EXCLUDEFROMCAPTURE sau khi chụp xong. Bắt buộc phải gọi
+        `_restore_capture_protection()` ngay sau `ImageGrab.grab()`, nếu không
+        ExamLockdown sẽ phát hiện tamper và chuyển sang trạng thái khóa.
         """
         if not sys.platform.startswith("win"):
-            return False
+            return []
 
         try:
             from .wda_unlock import unlock_all_excluded_windows
 
-            unlocked = unlock_all_excluded_windows(quiet=True)
-            return bool(unlocked)
+            return unlock_all_excluded_windows(quiet=True)
         except Exception as exc:
             print(f"[WARNING] Không tắt được WDA_EXCLUDEFROMCAPTURE: {exc}")
-            return False
+            return []
+
+    @staticmethod
+    def _restore_capture_protection(unlocked: list) -> None:
+        """Bật lại WDA_EXCLUDEFROMCAPTURE cho các cửa sổ vừa tạm mở."""
+        if not unlocked or not sys.platform.startswith("win"):
+            return
+
+        try:
+            from .wda_unlock import restore_window
+
+            for window in unlocked:
+                hwnd = int(window.get("hwnd") or 0)
+                if hwnd:
+                    try:
+                        restore_window(hwnd)
+                    except Exception:
+                        pass
+        except Exception as exc:
+            print(f"[WARNING] Không khôi phục được WDA_EXCLUDEFROMCAPTURE: {exc}")
 
     def _capture_screen_as_jpeg_b64(self, detailed: bool = False) -> Optional[str]:
         """Chụp màn hình chính, nén nhỏ và trả về ảnh JPEG dạng base64.
@@ -189,18 +208,22 @@ class GeminiHelper:
             )
             return None
 
-        # Trước khi chụp, chủ động tắt WDA_EXCLUDEFROMCAPTURE của các cửa sổ
-        # đang chặn capture (nếu tool chạy trên Windows và có đủ quyền).
-        self._unlock_excluded_from_capture()
+        # Trước khi chụp, tạm tắt WDA_EXCLUDEFROMCAPTURE. Ngay sau khi chụp,
+        # bật lại ngay để ExamLockdown không phát hiện tamper.
+        unlocked = self._unlock_excluded_from_capture()
 
         try:
             try:
                 image = ImageGrab.grab()
             except OSError as exc:
                 # Ví dụ: "The handle is invalid" khi đang ở secure desktop.
+                self._restore_capture_protection(unlocked)
                 raise ScreenCaptureBlockedError(
                     f"Windows không cho phép chụp màn hình lúc này: {exc}"
                 ) from exc
+
+            # Khôi phục bảo vệ càng sớm càng tốt, trước khi xử lý ảnh.
+            self._restore_capture_protection(unlocked)
 
             if image is None:
                 raise ScreenCaptureBlockedError(
@@ -210,14 +233,17 @@ class GeminiHelper:
             image = image.convert("RGB")
             if self._is_black_screenshot(image):
                 # WDA_EXCLUDEFROMCAPTURE có thể được app target bật lại ngay
-                # trước lúc ta chụp. Thử tắt flag thêm lần nữa rồi chụp lại.
-                if self._unlock_excluded_from_capture():
+                # trước lúc ta chụp. Thử tắt tạm thêm lần nữa rồi chụp lại.
+                unlocked = self._unlock_excluded_from_capture()
+                try:
                     try:
                         image = ImageGrab.grab()
-                    except OSError:
-                        image = None
-                    if image is not None:
-                        image = image.convert("RGB")
+                    finally:
+                        self._restore_capture_protection(unlocked)
+                except OSError:
+                    image = None
+                if image is not None:
+                    image = image.convert("RGB")
 
             if image is None or self._is_black_screenshot(image):
                 raise ScreenCaptureBlockedError(
