@@ -1,5 +1,5 @@
 {
-  "version": "1.1.30",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.30/watermark-tool-1.1.30.zip",
-  "notes": "Dung dung HWND app thi cho PrintWindow, khong goi SetWindowDisplayAffinity hay scan he thong trong luc submit"
+  "version": "1.1.31",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.31/watermark-tool-1.1.31.zip",
+  "notes": "CapsLock OFF an ngay lap tuc; AI chay thread rieng, ON lai moi chup va hien dap an moi"
 }

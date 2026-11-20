@@ -20,6 +20,8 @@ from .overlay import WatermarkOverlay
 BASE_DIR = Path(__file__).resolve().parent.parent
 EVADE_LOG_FILE = BASE_DIR / "data" / "exam_evade.log"
 
+_NO_ANSWER = object()
+
 
 def log(message: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {message}", flush=True)
@@ -79,6 +81,10 @@ class StealthHelperApp:
         self._defensive_hide_pending = False
         self._defensive_hide_lock = threading.Lock()
         self._seen_windows = set()
+        self._ai_busy = False
+        self._ai_busy_lock = threading.Lock()
+        self._pending_answer = _NO_ANSWER
+        self._pending_answer_lock = threading.Lock()
 
     # ------------------------------------------------------------------ chạy
     def start(self) -> None:
@@ -355,6 +361,7 @@ class StealthHelperApp:
             if self.overlay.is_child and self.overlay.detach_from_parent():
                 self._exam_attached = False
                 self._exam_attach_ready.clear()
+            self._process_pending_answer()
             return
 
         exam_hwnd, exam_pid, _reason = target
@@ -379,6 +386,78 @@ class StealthHelperApp:
             self._exam_attach_ready.clear()
             if self.overlay.hwnd:
                 log("[EVADE] Không gắn được watermark vào cửa sổ app thi (SetParent thất bại).")
+
+        self._process_pending_answer()
+
+    def _start_ai_worker(self) -> None:
+        """Chạy AI ở thread riêng để CapsLock OFF vẫn ẩn được ngay lập tức."""
+        with self._ai_busy_lock:
+            if self._ai_busy:
+                log("[AI] Vẫn đang đọc màn hình, bỏ qua lần bật CapsLock này.")
+                return
+            self._ai_busy = True
+
+        threading.Thread(
+            target=self._ai_worker,
+            name="StealthAIGeneration",
+            daemon=True,
+        ).start()
+
+    def _ai_worker(self) -> None:
+        try:
+            answer = self.ai.answer_from_screen(self.detailed_mode)
+        except ScreenCaptureBlockedError as exc:
+            log(f"[CHẶN] {exc}")
+            answer = "__SCREEN_BLOCKED__"
+        except Exception:
+            import traceback
+
+            traceback.print_exc()
+            answer = None
+        finally:
+            with self._ai_busy_lock:
+                self._ai_busy = False
+
+        with self._pending_answer_lock:
+            self._pending_answer = answer
+
+    def _show_answer(self, answer: Optional[str]) -> None:
+        if answer == "__SCREEN_BLOCKED__":
+            self.overlay.show("Không chụp được màn hình (bị chặn)")
+        elif answer is None:
+            self.overlay.show("Lỗi AI")
+        elif answer.strip().upper().startswith("NO_QUESTION"):
+            self.overlay.show("Không thấy câu hỏi")
+        elif answer.strip().lower().startswith(("tôi là trợ lý", "tôi là ai", "tôi là gemini")):
+            # Một số model cũ trả lời nhầm câu lệnh hệ thống thay vì đọc ảnh.
+            self.overlay.show("Không thấy câu hỏi")
+        elif self.detailed_mode:
+            self.overlay.show_lines(answer, max_lines=self.max_lines, max_chars=self.max_chars)
+        else:
+            self.overlay.show(answer[:120])
+
+    def _process_pending_answer(self) -> None:
+        """Hiển thị câu trả lời AI vừa xong, chỉ khi CapsLock vẫn bật."""
+        with self._pending_answer_lock:
+            answer = self._pending_answer
+            self._pending_answer = _NO_ANSWER
+
+        if answer is _NO_ANSWER:
+            return
+
+        if not self.active or not self.trigger.is_on():
+            return
+
+        with self._exam_target_lock:
+            target = self._exam_target
+
+        # Khi app thi đang mở, chỉ hiện nếu overlay đã được gắn thành child
+        # window. Nếu chưa gắn được thì bỏ qua, tránh show top-level bị kill.
+        if target is not None and not self._exam_attached:
+            return
+
+        self._show_answer(answer)
+
     def _find_current_exam_window(self):
         """Trả về (hwnd, pid, reason) nếu app thi đang tồn tại."""
         try:
@@ -436,42 +515,7 @@ class StealthHelperApp:
         if self.ai is not None:
             self.overlay.show("Đang đọc màn hình...")
             log("[BẬT] CapsLock đang bật -> đang gọi Gemini đọc màn hình...")
-
-            try:
-                answer = self.ai.answer_from_screen(self.detailed_mode)
-            except ScreenCaptureBlockedError as exc:
-                log(f"[CHẶN] {exc}")
-                answer = "__SCREEN_BLOCKED__"
-            except Exception:
-                import traceback
-
-                traceback.print_exc()
-                answer = None
-
-            # Trong lúc gọi API, người dùng có thể đã tắt CapsLock.
-            if not self.trigger.is_on():
-                self.deactivate()
-                return
-
-            # App thi có thể xuất hiện trong lúc gọi AI. Chỉ hiện kết quả khi
-            # overlay đã là child window, không show top-level trở lại.
-            if not self._ensure_attached_to_exam():
-                _evade_log("ANSWER_BLOCKED_NO_CHILD_ATTACH")
-                return
-
-            if answer == "__SCREEN_BLOCKED__":
-                self.overlay.show("Không chụp được màn hình (bị chặn)")
-            elif answer is None:
-                self.overlay.show("Lỗi AI")
-            elif answer.strip().upper().startswith("NO_QUESTION"):
-                self.overlay.show("Không thấy câu hỏi")
-            elif answer.strip().lower().startswith(("tôi là trợ lý", "tôi là ai", "tôi là gemini")):
-                # Một số model cũ trả lời nhầm câu lệnh hệ thống thay vì đọc ảnh.
-                self.overlay.show("Không thấy câu hỏi")
-            elif self.detailed_mode:
-                self.overlay.show_lines(answer, max_lines=self.max_lines, max_chars=self.max_chars)
-            else:
-                self.overlay.show(answer[:120])
+            self._start_ai_worker()
             return
 
         if not self._ensure_attached_to_exam():
@@ -489,6 +533,10 @@ class StealthHelperApp:
                 self.ai.restore_capture_protection_now()
             except Exception:
                 pass
+
+        # Hủy kết quả AI đang chờ hiển thị: tắt CapsLock nghĩa là ẩn ngay.
+        with self._pending_answer_lock:
+            self._pending_answer = _NO_ANSWER
 
         if not self.active:
             # Lần đồng bộ đầu tiên: CapsLock đang tắt, không cần log ồn ào.
