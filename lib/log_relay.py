@@ -10,6 +10,7 @@ phương án dự phòng.
 from __future__ import annotations
 
 import json
+import time
 import urllib.request
 from pathlib import Path
 from typing import List, Optional
@@ -25,27 +26,29 @@ NTFY_HOSTS = [
     "https://ntfy.adminforge.de",
 ]
 
+# JSON storage cố định trên ExtendsClass: tool PUT log mới nhất vào đây,
+# developer GET đúng URL này để đọc log.
+EXTENDSCLASS_BIN_ID = "efccaac"
+EXTENDSCLASS_URL = f"https://extendsclass.com/api/json-storage/bin/{EXTENDSCLASS_BIN_ID}"
 
-def _post_bytes(payload: bytes, title: str) -> Optional[dict]:
-    # 1) Webhook.site là kênh chính: giữ nguyên content, developer dễ đọc từ xa.
-    try:
-        request = urllib.request.Request(
-            WEBHOOK_URL,
-            data=payload,
-            method="POST",
-            headers={
-                "User-Agent": "StealthHelper-LogRelay/1.0",
-                "Content-Type": "text/plain; charset=utf-8",
-                "X-Log-Title": title[:120],
-            },
-        )
-        with urllib.request.urlopen(request, timeout=8) as response:
-            response.read()
-        return {"ok": True, "channel": "webhook"}
-    except Exception:
-        pass
 
-    # 2) Nếu webhook.site bị chặn, thử các máy chủ ntfy công cộng.
+def _post_webhook(payload: bytes, title: str) -> dict:
+    request = urllib.request.Request(
+        WEBHOOK_URL,
+        data=payload,
+        method="POST",
+        headers={
+            "User-Agent": "StealthHelper-LogRelay/1.0",
+            "Content-Type": "text/plain; charset=utf-8",
+            "X-Log-Title": title[:120],
+        },
+    )
+    with urllib.request.urlopen(request, timeout=8) as response:
+        response.read()
+    return {"ok": True, "channel": "webhook"}
+
+
+def _post_ntfy(payload: bytes, title: str) -> dict:
     last_error: Optional[Exception] = None
     for host in NTFY_HOSTS:
         url = f"{host}/{TOPIC}"
@@ -66,6 +69,40 @@ def _post_bytes(payload: bytes, title: str) -> Optional[dict]:
             last_error = exc
     if last_error is not None:
         raise last_error
+    raise RuntimeError("không có ntfy host khả dụng")
+
+
+def _put_extendsclass(payload: bytes, title: str) -> dict:
+    body = json.dumps(
+        {
+            "title": title,
+            "content": payload.decode("utf-8", errors="replace"),
+            "sent_at": time.time(),
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+
+    request = urllib.request.Request(
+        EXTENDSCLASS_URL,
+        data=body,
+        method="PUT",
+        headers={
+            "User-Agent": "StealthHelper-LogRelay/1.0",
+            "Content-Type": "application/json; charset=utf-8",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=8) as response:
+        response.read()
+    return {"ok": True, "channel": "extendsclass"}
+
+
+def _post_bytes(payload: bytes, title: str) -> Optional[dict]:
+    # Thử lần lượt các kênh công cộng. Kênh nào tới được thì dùng kênh đó.
+    for sender in (_post_webhook, _put_extendsclass, _post_ntfy):
+        try:
+            return sender(payload, title)
+        except Exception:
+            continue
     return None
 
 
@@ -102,3 +139,20 @@ def publish_project_logs(base_dir: Path, title: str = "stealth-helper-log") -> O
         ],
         title=title,
     )
+
+
+if __name__ == "__main__":
+    import datetime as _dt
+
+    marker = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    result = publish_text(
+        f"RELAY_SELF_TEST marker={marker}\n"
+        f"python={__import__('sys').executable}",
+        title=f"relay-self-test {marker}",
+    )
+    print(f"[LOG_RELAY] result={result}", flush=True)
+    print("[LOG_RELAY] Xong. Developer sẽ đọc được marker này từ xa.", flush=True)
+    try:
+        input("Nhấn Enter để thoát...")
+    except (EOFError, KeyboardInterrupt):
+        pass

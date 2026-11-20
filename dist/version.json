@@ -1,5 +1,5 @@
 {
-  "version": "1.1.19",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.19/watermark-tool-1.1.19.zip",
-  "notes": "Doi kenh log sang webhook.site vi may ban khong gui duoc toi ntfy"
+  "version": "1.1.20",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.20/watermark-tool-1.1.20.zip",
+  "notes": "Them Log_Relay_Test.bat va fallback ExtendsClass JSON storage"
 }
