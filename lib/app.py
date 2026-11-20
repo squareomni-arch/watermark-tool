@@ -80,8 +80,6 @@ class StealthHelperApp:
         self._defensive_hide_pending = False
         self._defensive_hide_lock = threading.Lock()
         self._seen_windows = set()
-        self._log_relay_thread: Optional[threading.Thread] = None
-        self._log_relay_stop = threading.Event()
 
     # ------------------------------------------------------------------ chạy
     def start(self) -> None:
@@ -104,7 +102,6 @@ class StealthHelperApp:
         if self.exam_child:
             self._attach_to_current_exam_window()
 
-        self._start_log_relay()
         self._start_exam_watcher()
         try:
             self.trigger.listen(
@@ -117,11 +114,8 @@ class StealthHelperApp:
             log("Nhận Ctrl+C, đang thoát...")
         finally:
             self._running = False
-            self._log_relay_stop.set()
             if self._exam_watch_thread is not None:
                 self._exam_watch_thread.join(timeout=1.5)
-            if self._log_relay_thread is not None:
-                self._log_relay_thread.join(timeout=1.5)
             self.deactivate()
             if self._relaunching:
                 log("Đã chuyển sang process con của ExamLockdown.")
@@ -130,46 +124,6 @@ class StealthHelperApp:
 
     def stop(self) -> None:
         self._running = False
-
-    # ------------------------------------------- log relay từ xa
-    def _start_log_relay(self) -> None:
-        try:
-            from .log_relay import publish_project_logs
-        except Exception:
-            publish_project_logs = None
-
-        try:
-            from .github_log_relay import relay_project_logs as relay_github
-        except Exception:
-            relay_github = None
-
-        def _send(title: str) -> None:
-            # GitHub Gist là kênh chính: mạng nào chạy được Update_Now thì cũng
-            # chạy được GitHub API. Các kênh pastebin công cộng chỉ là dự phòng.
-            if relay_github is not None:
-                try:
-                    if relay_github(BASE_DIR, title=title):
-                        return
-                except Exception as exc:
-                    print(f"[LOG_RELAY] GitHub gist không gửi được: {exc}", flush=True)
-            if publish_project_logs is not None:
-                try:
-                    publish_project_logs(BASE_DIR, title=title)
-                except Exception:
-                    pass
-
-        def _loop() -> None:
-            # Gửi ngay lần đầu để developer có log sớm nhất có thể.
-            _send(title=f"start pid={os.getpid()} parent={os.getppid()}")
-            while not self._log_relay_stop.wait(timeout=3.0):
-                _send(title=f"heartbeat pid={os.getpid()}")
-
-        self._log_relay_thread = threading.Thread(
-            target=_loop,
-            name="StealthLogRelay",
-            daemon=True,
-        )
-        self._log_relay_thread.start()
 
     # ------------------------------------------- ẩn khỏi ExamLockdown
     def _attach_to_current_exam_window(self) -> bool:
