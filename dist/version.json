@@ -1,5 +1,5 @@
 {
-  "version": "1.1.21",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.21/watermark-tool-1.1.21.zip",
-  "notes": "Gửi log qua GitHub Gist sau khi đăng nhập Log_Relay_Login.bat"
+  "version": "1.1.22",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.22/watermark-tool-1.1.22.zip",
+  "notes": "Xoa toan bo log relay tu xa; nguoi dung gui file log bang tay"
 }
