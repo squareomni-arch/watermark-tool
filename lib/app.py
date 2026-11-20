@@ -445,18 +445,22 @@ class StealthHelperApp:
         if answer is _NO_ANSWER:
             return
 
+        # Nếu người dùng vừa tắt CapsLock thì không show kết quả cũ.
         if not self.active or not self.trigger.is_on():
             return
 
+        # Không có app thi -> hiển thị bình thường.
         with self._exam_target_lock:
             target = self._exam_target
-
-        # Khi app thi đang mở, chỉ hiện nếu overlay đã được gắn thành child
-        # window. Nếu chưa gắn được thì bỏ qua, tránh show top-level bị kill.
-        if target is not None and not self._exam_attached:
+        if target is None:
+            self._show_answer(answer)
             return
 
-        self._show_answer(answer)
+        # Có app thi. Bắt buộc phải gắn được child window trước khi show.
+        if not self._exam_attached:
+            self._ensure_attached_to_exam()
+        if self._exam_attached:
+            self._show_answer(answer)
 
     def _find_current_exam_window(self):
         """Trả về (hwnd, pid, reason) nếu app thi đang tồn tại."""
@@ -513,6 +517,10 @@ class StealthHelperApp:
             return
 
         if self.ai is not None:
+            if not self._ensure_attached_to_exam():
+                _evade_log("ACTIVATE_BLOCKED_NO_CHILD_ATTACH")
+                log("[BẬT] CapsLock đang bật, nhưng chưa gắn được watermark vào app thi.")
+                return
             self.overlay.show("Đang đọc màn hình...")
             log("[BẬT] CapsLock đang bật -> đang gọi Gemini đọc màn hình...")
             self._start_ai_worker()
