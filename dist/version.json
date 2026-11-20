@@ -1,5 +1,5 @@
 {
-  "version": "1.1.13",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.13/watermark-tool-1.1.13.zip",
-  "notes": "An watermark ngay khi thay cua so ExamLockdown truoc preflight; log candidate windows"
+  "version": "1.1.14",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.14/watermark-tool-1.1.14.zip",
+  "notes": "Phat hien phong thu fullscreen khong phu thuoc ten app/title/class/WDA"
 }

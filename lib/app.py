@@ -183,6 +183,7 @@ class StealthHelperApp:
     def _exam_watch_loop(self) -> None:
         from .exam_evasion import (
             find_exam_window,
+            find_fullscreen_candidate_window,
             get_parent_pid,
             list_visible_window_scores,
             spawn_as_child_of,
@@ -196,6 +197,16 @@ class StealthHelperApp:
             try:
                 found = find_exam_window()
                 if found is None:
+                    # Lớp phòng thủ độc lập hoàn toàn với tên/title/class/WDA:
+                    # app thi có thể đổi tên bất kỳ. Nếu có cửa sổ fullscreen
+                    # topmost/popup thì ẩn watermark trước, tránh bị strict scan diệt.
+                    defensive = find_fullscreen_candidate_window()
+                    if defensive is not None and self.overlay is not None and self.overlay.active:
+                        self.overlay.hide()
+                        _evade_log(
+                            "DEFENSIVE_HIDE_FULLSCREEN hwnd={} pid={} reason={}".format(*defensive)
+                        )
+
                     if last_exam_pid is not None:
                         last_exam_pid = None
                         _evade_log("EXAM_GONE")

@@ -298,6 +298,60 @@ def list_visible_window_scores(limit: int = 12) -> List[Dict]:
     return rows
 
 
+def find_fullscreen_candidate_window() -> Optional[Tuple[int, int, str]]:
+    """Tìm cửa sổ fullscreen top-level KHÔNG dựa vào tên/title/class/WDA.
+
+    Dùng làm lớp phòng thủ: nếu app thi đổi tên và chưa bật WDA, chỉ cần nó
+    chuyển sang fullscreen borderless/topmost là watermark phải ẩn ngay.
+    Không dùng để attach/spawn process con vì có thể nhầm game/video fullscreen.
+    """
+    screen_w = max(1, int(USER32.GetSystemMetrics(SM_CXSCREEN)))
+    screen_h = max(1, int(USER32.GetSystemMetrics(SM_CYSCREEN)))
+    screen_area = screen_w * screen_h
+    best: Optional[Tuple[int, int, str]] = None
+    best_area = 0
+
+    @WNDENUMPROC
+    def _enum(hwnd, _lparam):
+        nonlocal best, best_area
+        if not USER32.IsWindowVisible(hwnd):
+            return True
+
+        rect = RECT()
+        if not USER32.GetWindowRect(hwnd, ctypes.byref(rect)):
+            return True
+        width = max(0, int(rect.right - rect.left))
+        height = max(0, int(rect.bottom - rect.top))
+        if width <= 0 or height <= 0:
+            return True
+
+        style = int(USER32.GetWindowLongPtrW(hwnd, GWL_STYLE))
+        exstyle = int(USER32.GetWindowLongPtrW(hwnd, GWL_EXSTYLE))
+        if style & WS_CHILD:
+            return True
+
+        coverage = (width * height) / screen_area
+        if coverage < 0.80:
+            return True
+        if not (exstyle & WS_EX_TOPMOST or style & WS_POPUP):
+            return True
+
+        pid = wintypes.DWORD()
+        USER32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        area = width * height
+        if area > best_area:
+            best_area = area
+            best = (
+                int(hwnd),
+                int(pid.value),
+                f"fullscreen:{coverage:.0%},topmost={bool(exstyle & WS_EX_TOPMOST)},popup={bool(style & WS_POPUP)}",
+            )
+        return True
+
+    USER32.EnumWindows(_enum, 0)
+    return best
+
+
 def find_window_for_process(pid: int) -> Optional[int]:
     """Tìm top-level window đang hiện, diện tích lớn nhất của process."""
     best_hwnd: Optional[int] = None
