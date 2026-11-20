@@ -188,6 +188,9 @@ def _load_libs():
         wintypes.HWND, ctypes.POINTER(wintypes.DWORD)
     ]
 
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.GetForegroundWindow.argtypes = []
+
     return kernel32, user32
 
 
@@ -389,6 +392,25 @@ def find_fullscreen_candidate_window() -> Optional[Tuple[int, int, str]]:
 
     USER32.EnumWindows(_enum, 0)
     return best
+
+
+def get_foreground_window() -> Optional[Tuple[int, int, str]]:
+    """Đọc cửa sổ foreground hiện tại và mô tả ngắn.
+
+    Dùng làm tín hiệu tức thời: app thi vào bài là cửa sổ fullscreen được
+    đưa lên foreground; bắt foreground nhanh hơn EnumWindows một chút trong
+    các tình huống đua với strict scan.
+    """
+    hwnd = int(USER32.GetForegroundWindow() or 0)
+    if not hwnd:
+        return None
+    info = describe_visible_window(hwnd)
+    if info is None:
+        return None
+    return hwnd, int(info["pid"]), (
+        f"foreground,title={info['title']!r},class={info['class']!r},"
+        f"coverage={info['coverage']},topmost={info['topmost']},popup={info['popup']}"
+    )
 
 
 def find_window_for_process(pid: int) -> Optional[int]:

@@ -36,9 +36,8 @@ def _evade_log(message: str) -> None:
 
 
 class StealthHelperApp:
-    def __init__(self, config: Optional[Dict] = None, exam_child: bool = False):
+    def __init__(self, config: Optional[Dict] = None):
         self.config = config or {}
-        self.exam_child = exam_child
 
         trigger_cfg = self.config.get("trigger") or {}
         self.trigger = CapsLockTrigger(poll_interval=trigger_cfg.get("poll_interval", 0.1))
@@ -85,7 +84,7 @@ class StealthHelperApp:
     def start(self) -> None:
         _evade_log(
             "=" * 72
-            + f"\nSTART pid={os.getpid()} parent={os.getppid()} exam_child={self.exam_child}"
+            + f"\nSTART pid={os.getpid()} parent={os.getppid()}"
             + f"\nexecutable={sys.executable if hasattr(sys, 'executable') else '?'}"
             + f"\npythonw={'pythonw.exe' in (sys.executable or '').lower()}"
             + "\n"
@@ -95,28 +94,6 @@ class StealthHelperApp:
         self._print_banner()
 
         self._running = True
-
-        # Process con phải gắn overlay thành cửa sổ con NGAY TRƯỚC KHI hiển thị.
-        # Nếu để trigger.listen bật CapsLock show top-level trước, ExamLockdown
-        # có thể quét trúng cửa sổ top-level đó trong lúc đua và kill process.
-        if self.exam_child:
-            self._attach_to_current_exam_window()
-        else:
-            # Trường hợp app thi đã mở TRƯỚC khi tool chạy: ngay từ đầu đã có
-            # cửa sổ kiosk trong baseline. Đừng vào trigger/listen để show
-            # top-level; hãy chuyển sang process con của app thi ngay lập tức.
-            try:
-                from .exam_evasion import find_exam_window
-
-                found = find_exam_window()
-            except Exception:
-                found = None
-
-            if found is not None:
-                _evade_log(f"EXAM_AT_START {found!r}")
-                self._spawn_exam_child(found)
-                self._relaunching = True
-                return
 
         self._start_exam_watcher()
         try:
@@ -142,36 +119,6 @@ class StealthHelperApp:
         self._running = False
 
     # ------------------------------------------- ẩn khỏi ExamLockdown
-    def _spawn_exam_child(self, found: tuple) -> None:
-        """Chạy lại tool thành process con của app thi rồi thoát process hiện tại."""
-        from .exam_evasion import get_parent_pid, spawn_as_child_of
-
-        exam_hwnd, exam_pid, reason = found
-        pid_file = BASE_DIR / "data" / "stealth_helper.pid"
-
-        try:
-            if pid_file.exists():
-                try:
-                    old_pid = int(pid_file.read_text(encoding="ascii").strip())
-                except (OSError, ValueError):
-                    old_pid = 0
-                if old_pid == os.getpid():
-                    pid_file.unlink()
-        except OSError:
-            pass
-
-        _evade_log(f"SPAWN_CHILD exam_pid={exam_pid} exam_hwnd={exam_hwnd} reason={reason}")
-        child_pid = spawn_as_child_of(exam_pid)
-        time.sleep(0.3)
-        tool_parent = get_parent_pid(child_pid)
-        _evade_log(
-            f"SPAWNED child_pid={child_pid} toolhelp_parent={tool_parent} "
-            f"match_exam_pid={tool_parent == exam_pid}"
-        )
-        log(f"[EVADE] Đã chạy lại dưới dạng process con của app thi (pid {child_pid}).")
-        self._relaunching = True
-        self._running = False
-
     def _attach_to_current_exam_window(self) -> bool:
         """Tìm app thi đang mở và gắn overlay ngay trên thread chính."""
         if self.overlay is None:
@@ -238,6 +185,7 @@ class StealthHelperApp:
                 describe_visible_window,
                 find_exam_window,
                 find_fullscreen_candidate_window,
+                get_foreground_window,
                 list_visible_window_scores,
                 snapshot_visible_windows,
             )
@@ -291,6 +239,24 @@ class StealthHelperApp:
                 # top-level MỚI xuất hiện. Lớp này độc lập hoàn toàn với
                 # tên exe/title/class/WDA.
                 self._hide_for_new_windows()
+
+                # Foreground tức thời: app thi vào bài thường là fullscreen
+                # và giành foreground. Bắt tín hiệu này nhanh hơn EnumWindows.
+                fg = get_foreground_window()
+                if fg is not None:
+                    fg_hwnd, fg_pid, fg_reason = fg
+                    fg_info = describe_visible_window(fg_hwnd) or {}
+                    title_lower = str(fg_info.get("title", "")).lower()
+                    class_lower = str(fg_info.get("class", "")).lower()
+                    if (
+                        float(fg_info.get("coverage", 0.0)) >= 0.8
+                        or "examlockdown" in title_lower
+                        or "examlockdown" in class_lower
+                    ):
+                        self._hide_overlay_immediately("FOREGROUND_GUARD " + fg_reason)
+                        with self._exam_target_lock:
+                            self._exam_target = (fg_hwnd, fg_pid, fg_reason)
+                        self._exam_attach_ready.clear()
 
                 defensive = find_fullscreen_candidate_window()
                 if defensive is not None:
@@ -346,9 +312,8 @@ class StealthHelperApp:
     def _handle_exam_found(self, found: tuple, source: str) -> None:
         """Xử lý khi phát hiện app thi.
 
-        Nếu tool đang chạy bình thường (không phải exam_child): ẩn watermark
-        ngay rồi chuyển sang process con của app thi.
-        Nếu đã là exam_child: đưa target cho _exam_tick gắn cửa sổ con.
+        Chỉ ẩn watermark rồi đưa target cho _exam_tick gắn cửa sổ con.
+        Không spawn/đổi parent process để tránh ảnh hưởng tới app thi.
         """
         exam_hwnd, exam_pid, reason = found
         _evade_log(
@@ -357,18 +322,13 @@ class StealthHelperApp:
         )
         log(f"[EVADE] Phát hiện app thi: hwnd={exam_hwnd}, pid={exam_pid}, lý do={reason}.")
 
+        # Ẩn ngay để không bị strict scan bắt top-level, sau đó giao cho
+        # _exam_tick gắn overlay thành child window của app thi.
         self._hide_overlay_immediately("HIDE_BEFORE_ATTACH watermark đang hiện -> đã ẩn.")
 
         with self._exam_target_lock:
             self._exam_target = (exam_hwnd, exam_pid, reason)
         self._exam_attach_ready.clear()
-
-        if not self.exam_child and not self._relaunching:
-            try:
-                self._spawn_exam_child(found)
-            except Exception as exc:
-                _evade_log(f"SPAWN_FAILED exam_pid={exam_pid} error={exc!r}")
-                log(f"[WARNING] Không chạy lại được process con: {exc}")
 
     def _exam_tick(self) -> None:
         """Chạy trên thread chính: attach/detach overlay đúng thread tạo cửa sổ."""
@@ -418,13 +378,6 @@ class StealthHelperApp:
 
         if self.overlay is None:
             log("[BẬT] CapsLock đang bật.")
-            return
-
-        # Process con của app thi: không được show overlay lúc nó còn là
-        # top-level window. Đợi _exam_tick gắn xong rồi mới show.
-        if self.exam_child and not self._exam_attached:
-            _evade_log(f"ACTIVATE_WAIT_ATTACH active={self.active} overlay_active={self.overlay.active}")
-            log("[BẬT] CapsLock đang bật, chờ gắn watermark vào cửa sổ app thi.")
             return
 
         if self.ai is not None:

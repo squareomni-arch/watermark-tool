@@ -235,13 +235,11 @@ def main() -> int:
     enable_dpi_awareness()
     set_console_title("Stealth Helper - CapsLock ON/OFF")
 
-    exam_child = "--exam-child" in sys.argv
-
     app = None
     updater = None
     try:
         try:
-            app = StealthHelperApp(config, exam_child=exam_child)
+            app = StealthHelperApp(config)
         except RuntimeError as exc:
             print(f"[ERROR] {exc}")
             return 1
