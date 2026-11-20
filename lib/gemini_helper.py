@@ -202,7 +202,9 @@ class GeminiHelper:
             [],
         )
         if unlocked:
+            print(f"[WDA] Đang khôi phục {len(unlocked)} cửa sổ...", flush=True)
             self._restore_capture_protection(unlocked)
+            print("[WDA] Khôi phục xong.", flush=True)
 
     def _try_capture_exam_content_without_wda(self):
         """Chụp nội dung WebView2/app thi bằng PrintWindow, không đụng WDA.
@@ -272,7 +274,9 @@ class GeminiHelper:
             else:
                 print("[CAPTURE] PrintWindow không dùng được, fallback ImageGrab...", flush=True)
                 # Đường dự phòng: tạm gỡ WDA, chụp màn hình, rồi bật lại NGAY.
+                print("[CAPTURE] Đang quét WDA_EXCLUDEFROMCAPTURE...", flush=True)
                 unlocked = self._unlock_excluded_from_capture()
+                print(f"[CAPTURE] WDA quét xong: unlocked={bool(unlocked)}", flush=True)
                 self._temporarily_unlocked_windows = unlocked
                 try:
                     try:

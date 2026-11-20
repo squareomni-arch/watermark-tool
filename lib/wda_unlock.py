@@ -598,6 +598,8 @@ def unlock_all_excluded_windows(quiet: bool = False) -> List[Dict]:
                         f"  [FAIL] pid={window['pid']} "
                         f"title='{window['title'] or window['class']}': {exc}"
                     )
+    if unlocked:
+        print(f"[WDA] Đã tạm mở {len(unlocked)} cửa sổ.", flush=True)
     return unlocked
 
 
