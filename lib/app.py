@@ -251,6 +251,8 @@ class StealthHelperApp:
 
                 # Foreground tức thời: app thi vào bài thường là fullscreen
                 # và giành foreground. Bắt tín hiệu này nhanh hơn EnumWindows.
+                # CHỈ ẩn watermark phòng thủ; KHÔNG gán _exam_target từ đây,
+                # vì có thể nhầm browser/video fullscreen -> PrintWindow treo.
                 fg = get_foreground_window()
                 if fg is not None:
                     fg_hwnd, fg_pid, fg_reason = fg
@@ -263,9 +265,6 @@ class StealthHelperApp:
                         or "examlockdown" in class_lower
                     ):
                         self._hide_overlay_immediately("FOREGROUND_GUARD " + fg_reason)
-                        with self._exam_target_lock:
-                            self._exam_target = (fg_hwnd, fg_pid, fg_reason)
-                        self._exam_attach_ready.clear()
 
                 defensive = find_fullscreen_candidate_window()
                 if defensive is not None:

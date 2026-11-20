@@ -255,12 +255,14 @@ class GeminiHelper:
             return None
 
         try:
+            print("[CAPTURE] Bắt đầu chụp màn hình...", flush=True)
             # Đường ưu tiên: chụp thẳng child window của app thi bằng
             # PrintWindow. Không cần gỡ WDA -> không gây tamper.
             image = self._try_capture_exam_content_without_wda()
             if image is not None:
-                print("[CAPTURE] Dùng PrintWindow child window, không đụng WDA.")
+                print("[CAPTURE] Dùng PrintWindow child window, không đụng WDA.", flush=True)
             else:
+                print("[CAPTURE] PrintWindow không dùng được, fallback ImageGrab...", flush=True)
                 # Đường dự phòng: tạm gỡ WDA, chụp màn hình, rồi bật lại NGAY.
                 unlocked = self._unlock_excluded_from_capture()
                 self._temporarily_unlocked_windows = unlocked
@@ -279,6 +281,7 @@ class GeminiHelper:
                         "Windows trả về ảnh rỗng khi chụp màn hình."
                     )
                 image = image.convert("RGB")
+                print("[CAPTURE] ImageGrab đã chụp xong.", flush=True)
 
                 if self._is_black_screenshot(image):
                     # WDA có thể được app bật lại ngay trước lúc chụp.
@@ -300,6 +303,8 @@ class GeminiHelper:
                     "Ảnh chụp bị đen hoàn toàn. Nội dung có thể đang bị Windows"
                     " chặn chụp (secure desktop, DRM, game hoặc video có bảo vệ)."
                 )
+
+            print("[CAPTURE] Chuẩn bị nén ảnh và gửi Gemini...", flush=True)
 
             if detailed:
                 max_dimension = self.detail_image_dimension
