@@ -1,5 +1,5 @@
 {
-  "version": "1.1.22",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.22/watermark-tool-1.1.22.zip",
-  "notes": "Xoa toan bo log relay tu xa; nguoi dung gui file log bang tay"
+  "version": "1.1.23",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.23/watermark-tool-1.1.23.zip",
+  "notes": "Xu ly app thi da mo truoc, an watermark ngay trong baseline truoc khi bi strict-scan kill"
 }
