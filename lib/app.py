@@ -173,6 +173,7 @@ class StealthHelperApp:
             return None
 
     def _start_exam_watcher(self) -> None:
+        _evade_log(f"WATCHER_STARTING pid={os.getpid()}")
         self._exam_watch_thread = threading.Thread(
             target=self._exam_watch_loop,
             name="ExamLockdownWatcher",
@@ -181,20 +182,35 @@ class StealthHelperApp:
         self._exam_watch_thread.start()
 
     def _exam_watch_loop(self) -> None:
-        from .exam_evasion import (
-            find_exam_window,
-            find_fullscreen_candidate_window,
-            get_parent_pid,
-            list_visible_window_scores,
-            spawn_as_child_of,
-        )
+        _evade_log(f"WATCHER_THREAD_STARTED pid={os.getpid()}")
+
+        try:
+            from .exam_evasion import (
+                find_exam_window,
+                find_fullscreen_candidate_window,
+                get_parent_pid,
+                list_visible_window_scores,
+                spawn_as_child_of,
+            )
+        except Exception as exc:
+            _evade_log(f"WATCHER_IMPORT_FAILED {exc!r}")
+            return
 
         pid_file = Path(__file__).resolve().parent.parent / "data" / "stealth_helper.pid"
         last_exam_pid: Optional[int] = None
         last_candidate_log = 0.0
+        last_heartbeat_log = 0.0
 
         while self._running:
             try:
+                now_heartbeat = time.monotonic()
+                if now_heartbeat - last_heartbeat_log >= 5.0:
+                    last_heartbeat_log = now_heartbeat
+                    _evade_log(
+                        f"WATCHER_ALIVE pid={os.getpid()} parent={os.getppid()} "
+                        f"overlay_active={self.overlay.active if self.overlay else None}"
+                    )
+
                 found = find_exam_window()
                 if found is None:
                     # Lớp phòng thủ độc lập hoàn toàn với tên/title/class/WDA:
