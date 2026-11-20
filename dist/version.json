@@ -1,5 +1,5 @@
 {
-  "version": "1.1.15",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.15/watermark-tool-1.1.15.zip",
-  "notes": "Log heartbeat va loi import watcher de tim vi sao khong co EXAM_FOUND"
+  "version": "1.1.16",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.16/watermark-tool-1.1.16.zip",
+  "notes": "An watermark ngay khi cua so top-level moi xuat hien, bat ExamLockdown tu preflight ke ca doi ten"
 }

@@ -215,87 +215,118 @@ def find_process_by_name(process_name: str) -> Optional[int]:
         KERNEL32.CloseHandle(snapshot)
 
 
-def list_visible_window_scores(limit: int = 12) -> List[Dict]:
-    """Liệt kê các cửa sổ top-level đang hiện kèm điểm nhận diện.
+def describe_visible_window(hwnd: int) -> Optional[Dict]:
+    """Đọc thông tin một cửa sổ top-level đang hiển thị."""
+    if not USER32.IsWindowVisible(hwnd):
+        return None
 
-    Dùng để chẩn đoán khi `find_exam_window()` không thấy app thi.
-    """
+    rect = RECT()
+    if not USER32.GetWindowRect(hwnd, ctypes.byref(rect)):
+        return None
+    width = max(0, int(rect.right - rect.left))
+    height = max(0, int(rect.bottom - rect.top))
+    if width <= 0 or height <= 0:
+        return None
+
     screen_w = max(1, int(USER32.GetSystemMetrics(SM_CXSCREEN)))
     screen_h = max(1, int(USER32.GetSystemMetrics(SM_CYSCREEN)))
     screen_area = screen_w * screen_h
-    rows: List[Dict] = []
+
+    pid = wintypes.DWORD()
+    USER32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+
+    title_buf = ctypes.create_unicode_buffer(256)
+    USER32.GetWindowTextW(hwnd, title_buf, len(title_buf))
+    class_buf = ctypes.create_unicode_buffer(256)
+    USER32.GetClassNameW(hwnd, class_buf, len(class_buf))
+
+    style = int(USER32.GetWindowLongPtrW(hwnd, GWL_STYLE))
+    exstyle = int(USER32.GetWindowLongPtrW(hwnd, GWL_EXSTYLE))
+
+    affinity = wintypes.DWORD()
+    wda = (
+        int(affinity.value)
+        if USER32.GetWindowDisplayAffinity(hwnd, ctypes.byref(affinity))
+        else None
+    )
+
+    coverage = (width * height) / screen_area
+    score = 0
+    if wda == WDA_EXCLUDEFROMCAPTURE:
+        score += 100
+    if coverage >= 0.80:
+        score += 45
+    elif coverage >= 0.60:
+        score += 25
+    if exstyle & WS_EX_TOPMOST:
+        score += 20
+    if style & WS_POPUP:
+        score += 15
+    if "hwndwrapper" in class_buf.value.lower():
+        score += 20
+    title_lower = title_buf.value.lower()
+    class_lower = class_buf.value.lower()
+    if "examlockdown" in title_lower or "examlockdown" in class_lower:
+        score += 120
+
+    return {
+        "hwnd": int(hwnd),
+        "pid": int(pid.value),
+        "title": title_buf.value.strip(),
+        "class": class_buf.value.strip(),
+        "w": width,
+        "h": height,
+        "coverage": round(coverage, 2),
+        "topmost": bool(exstyle & WS_EX_TOPMOST),
+        "popup": bool(style & WS_POPUP),
+        "wda": wda,
+        "score": score,
+    }
+
+
+def snapshot_visible_windows() -> List[Tuple[int, int]]:
+    """Trả về (hwnd, pid) của mọi cửa sổ top-level đang hiển thị."""
+    rows: List[Tuple[int, int]] = []
 
     @WNDENUMPROC
     def _enum(hwnd, _lparam):
-        if len(rows) >= limit:
-            return False
         if not USER32.IsWindowVisible(hwnd):
             return True
 
         rect = RECT()
         if not USER32.GetWindowRect(hwnd, ctypes.byref(rect)):
             return True
-        width = max(0, int(rect.right - rect.left))
-        height = max(0, int(rect.bottom - rect.top))
+        width = int(rect.right - rect.left)
+        height = int(rect.bottom - rect.top)
         if width <= 0 or height <= 0:
             return True
 
         pid = wintypes.DWORD()
         USER32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-
-        title_buf = ctypes.create_unicode_buffer(256)
-        USER32.GetWindowTextW(hwnd, title_buf, len(title_buf))
-        class_buf = ctypes.create_unicode_buffer(256)
-        USER32.GetClassNameW(hwnd, class_buf, len(class_buf))
-
-        style = int(USER32.GetWindowLongPtrW(hwnd, GWL_STYLE))
-        exstyle = int(USER32.GetWindowLongPtrW(hwnd, GWL_EXSTYLE))
-
-        affinity = wintypes.DWORD()
-        wda = (
-            int(affinity.value)
-            if USER32.GetWindowDisplayAffinity(hwnd, ctypes.byref(affinity))
-            else None
-        )
-
-        coverage = (width * height) / screen_area
-        score = 0
-        if wda == WDA_EXCLUDEFROMCAPTURE:
-            score += 100
-        if coverage >= 0.80:
-            score += 45
-        elif coverage >= 0.60:
-            score += 25
-        if exstyle & WS_EX_TOPMOST:
-            score += 20
-        if style & WS_POPUP:
-            score += 15
-        if "hwndwrapper" in class_buf.value.lower():
-            score += 20
-        title_lower = title_buf.value.lower()
-        class_lower = class_buf.value.lower()
-        if "examlockdown" in title_lower or "examlockdown" in class_lower:
-            score += 120
-
-        rows.append(
-            {
-                "hwnd": int(hwnd),
-                "pid": int(pid.value),
-                "title": title_buf.value.strip(),
-                "class": class_buf.value.strip(),
-                "w": width,
-                "h": height,
-                "coverage": round(coverage, 2),
-                "topmost": bool(exstyle & WS_EX_TOPMOST),
-                "popup": bool(style & WS_POPUP),
-                "wda": wda,
-                "score": score,
-            }
-        )
+        rows.append((int(hwnd), int(pid.value)))
         return True
 
     USER32.EnumWindows(_enum, 0)
     return rows
+
+
+def list_visible_window_scores(limit: int = 12) -> List[Dict]:
+    """Liệt kê các cửa sổ top-level đang hiện, sắp xếp theo điểm nhận diện.
+
+    Dùng để chẩn đoán khi `find_exam_window()` không thấy app thi.
+    """
+    rows: List[Dict] = []
+
+    @WNDENUMPROC
+    def _enum(hwnd, _lparam):
+        info = describe_visible_window(hwnd)
+        if info is not None:
+            rows.append(info)
+        return True
+
+    USER32.EnumWindows(_enum, 0)
+    rows.sort(key=lambda r: r.get("score", 0), reverse=True)
+    return rows[: max(1, limit)]
 
 
 def find_fullscreen_candidate_window() -> Optional[Tuple[int, int, str]]:

@@ -77,6 +77,9 @@ class StealthHelperApp:
         self._exam_target_lock = threading.Lock()
         self._exam_attach_ready = threading.Event()
         self._exam_attached = False
+        self._defensive_hide_pending = False
+        self._defensive_hide_lock = threading.Lock()
+        self._seen_windows = set()
 
     # ------------------------------------------------------------------ chạy
     def start(self) -> None:
@@ -186,10 +189,12 @@ class StealthHelperApp:
 
         try:
             from .exam_evasion import (
+                describe_visible_window,
                 find_exam_window,
                 find_fullscreen_candidate_window,
                 get_parent_pid,
                 list_visible_window_scores,
+                snapshot_visible_windows,
                 spawn_as_child_of,
             )
         except Exception as exc:
@@ -201,6 +206,13 @@ class StealthHelperApp:
         last_candidate_log = 0.0
         last_heartbeat_log = 0.0
 
+        try:
+            for hwnd, _pid in snapshot_visible_windows():
+                self._seen_windows.add(hwnd)
+            _evade_log(f"WATCHER_BASELINE windows={len(self._seen_windows)}")
+        except Exception as exc:
+            _evade_log(f"WATCHER_BASELINE_FAILED {exc!r}")
+
         while self._running:
             try:
                 now_heartbeat = time.monotonic()
@@ -210,6 +222,23 @@ class StealthHelperApp:
                         f"WATCHER_ALIVE pid={os.getpid()} parent={os.getppid()} "
                         f"overlay_active={self.overlay.active if self.overlay else None}"
                     )
+
+                # Ẩn watermark ngay khi có cửa sổ top-level MỚI xuất hiện.
+                # Đây là lớp rename-proof bắt ExamLockdown ngay từ cửa sổ
+                # preflight, trước khi app kịp chuyển fullscreen/WDA.
+                try:
+                    for hwnd, pid in snapshot_visible_windows():
+                        if hwnd in self._seen_windows:
+                            continue
+                        self._seen_windows.add(hwnd)
+                        if pid == os.getpid():
+                            continue
+                        info = describe_visible_window(hwnd)
+                        _evade_log("NEW_WINDOW " + repr(info))
+                        with self._defensive_hide_lock:
+                            self._defensive_hide_pending = True
+                except Exception as exc:
+                    _evade_log(f"NEW_WINDOW_CHECK_FAILED {exc!r}")
 
                 found = find_exam_window()
                 if found is None:
@@ -324,6 +353,14 @@ class StealthHelperApp:
         """Chạy trên thread chính: attach/detach overlay đúng thread tạo cửa sổ."""
         if self.overlay is None:
             return
+
+        with self._defensive_hide_lock:
+            hide_requested = self._defensive_hide_pending
+            self._defensive_hide_pending = False
+
+        if hide_requested and self.overlay.active:
+            self.overlay.hide()
+            _evade_log("MAIN_THREAD_DEFENSIVE_HIDE overlay đã ẩn vì có cửa sổ mới.")
 
         with self._exam_target_lock:
             target = self._exam_target
