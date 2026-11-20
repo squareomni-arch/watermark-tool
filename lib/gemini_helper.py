@@ -203,6 +203,39 @@ class GeminiHelper:
         if unlocked:
             self._restore_capture_protection(unlocked)
 
+    def _try_capture_exam_content_without_wda(self):
+        """Chụp nội dung WebView2/app thi bằng PrintWindow, không đụng WDA.
+
+        Nếu thành công thì không cần gỡ WDA_EXCLUDEFROMCAPTURE, do đó
+        ExamLockdown sẽ không phát hiện tamper và không làm hỏng submit.
+        """
+        if not sys.platform.startswith("win"):
+            return None
+
+        try:
+            from .exam_evasion import find_exam_window
+            from .screen_capture import (
+                capture_hwnd_via_printwindow,
+                find_exam_content_window,
+            )
+        except Exception:
+            return None
+
+        found = find_exam_window()
+        if found is None:
+            return None
+
+        exam_hwnd = int(found[0])
+        child_hwnd = find_exam_content_window(exam_hwnd) or exam_hwnd
+        image = capture_hwnd_via_printwindow(child_hwnd)
+        if image is None:
+            return None
+
+        image = image.convert("RGB")
+        if self._is_black_screenshot(image):
+            return None
+        return image
+
     def _capture_screen_as_jpeg_b64(self, detailed: bool = False) -> Optional[str]:
         """Chụp màn hình chính, nén nhỏ và trả về ảnh JPEG dạng base64.
 
@@ -222,33 +255,14 @@ class GeminiHelper:
             )
             return None
 
-        # Trước khi chụp, tạm tắt WDA_EXCLUDEFROMCAPTURE. Ngay sau khi chụp,
-        # bật lại ngay để ExamLockdown không phát hiện tamper.
-        unlocked = self._unlock_excluded_from_capture()
-        self._temporarily_unlocked_windows = unlocked
-
         try:
-            try:
-                image = ImageGrab.grab()
-            except OSError as exc:
-                # Ví dụ: "The handle is invalid" khi đang ở secure desktop.
-                self.restore_capture_protection_now()
-                raise ScreenCaptureBlockedError(
-                    f"Windows không cho phép chụp màn hình lúc này: {exc}"
-                ) from exc
-
-            # Khôi phục bảo vệ càng sớm càng tốt, trước khi xử lý ảnh.
-            self.restore_capture_protection_now()
-
-            if image is None:
-                raise ScreenCaptureBlockedError(
-                    "Windows trả về ảnh rỗng khi chụp màn hình."
-                )
-
-            image = image.convert("RGB")
-            if self._is_black_screenshot(image):
-                # WDA_EXCLUDEFROMCAPTURE có thể được app target bật lại ngay
-                # trước lúc ta chụp. Thử tắt tạm thêm lần nữa rồi chụp lại.
+            # Đường ưu tiên: chụp thẳng child window của app thi bằng
+            # PrintWindow. Không cần gỡ WDA -> không gây tamper.
+            image = self._try_capture_exam_content_without_wda()
+            if image is not None:
+                print("[CAPTURE] Dùng PrintWindow child window, không đụng WDA.")
+            else:
+                # Đường dự phòng: tạm gỡ WDA, chụp màn hình, rồi bật lại NGAY.
                 unlocked = self._unlock_excluded_from_capture()
                 self._temporarily_unlocked_windows = unlocked
                 try:
@@ -256,10 +270,31 @@ class GeminiHelper:
                         image = ImageGrab.grab()
                     finally:
                         self.restore_capture_protection_now()
-                except OSError:
-                    image = None
-                if image is not None:
-                    image = image.convert("RGB")
+                except OSError as exc:
+                    raise ScreenCaptureBlockedError(
+                        f"Windows không cho phép chụp màn hình lúc này: {exc}"
+                    ) from exc
+
+                if image is None:
+                    raise ScreenCaptureBlockedError(
+                        "Windows trả về ảnh rỗng khi chụp màn hình."
+                    )
+                image = image.convert("RGB")
+
+                if self._is_black_screenshot(image):
+                    # WDA có thể được app bật lại ngay trước lúc chụp.
+                    # Thử thêm một lần, vẫn bật lại ngay sau khi chụp.
+                    unlocked = self._unlock_excluded_from_capture()
+                    self._temporarily_unlocked_windows = unlocked
+                    try:
+                        try:
+                            image = ImageGrab.grab()
+                        finally:
+                            self.restore_capture_protection_now()
+                    except OSError:
+                        image = None
+                    if image is not None:
+                        image = image.convert("RGB")
 
             if image is None or self._is_black_screenshot(image):
                 raise ScreenCaptureBlockedError(

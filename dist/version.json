@@ -1,5 +1,5 @@
 {
-  "version": "1.1.28",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.28/watermark-tool-1.1.28.zip",
-  "notes": "Khong show watermark top-level khi app thi dang mo; attach child truoc khi show"
+  "version": "1.1.29",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.29/watermark-tool-1.1.29.zip",
+  "notes": "Chup WebView2 bang PrintWindow khong can go WDA, tranh lam hong submit"
 }
