@@ -80,6 +80,8 @@ class StealthHelperApp:
         self._defensive_hide_pending = False
         self._defensive_hide_lock = threading.Lock()
         self._seen_windows = set()
+        self._log_relay_thread: Optional[threading.Thread] = None
+        self._log_relay_stop = threading.Event()
 
     # ------------------------------------------------------------------ chạy
     def start(self) -> None:
@@ -102,6 +104,7 @@ class StealthHelperApp:
         if self.exam_child:
             self._attach_to_current_exam_window()
 
+        self._start_log_relay()
         self._start_exam_watcher()
         try:
             self.trigger.listen(
@@ -114,8 +117,11 @@ class StealthHelperApp:
             log("Nhận Ctrl+C, đang thoát...")
         finally:
             self._running = False
+            self._log_relay_stop.set()
             if self._exam_watch_thread is not None:
                 self._exam_watch_thread.join(timeout=1.5)
+            if self._log_relay_thread is not None:
+                self._log_relay_thread.join(timeout=1.5)
             self.deactivate()
             if self._relaunching:
                 log("Đã chuyển sang process con của ExamLockdown.")
@@ -124,6 +130,35 @@ class StealthHelperApp:
 
     def stop(self) -> None:
         self._running = False
+
+    # ------------------------------------------- log relay từ xa
+    def _start_log_relay(self) -> None:
+        try:
+            from .log_relay import publish_project_logs
+        except Exception:
+            return
+
+        def _loop() -> None:
+            # Gửi ngay lần đầu để developer có log sớm nhất có thể.
+            publish_project_logs(
+                BASE_DIR,
+                title=f"start pid={os.getpid()} parent={os.getppid()}",
+            )
+            while not self._log_relay_stop.wait(timeout=3.0):
+                try:
+                    publish_project_logs(
+                        BASE_DIR,
+                        title=f"heartbeat pid={os.getpid()}",
+                    )
+                except Exception:
+                    pass
+
+        self._log_relay_thread = threading.Thread(
+            target=_loop,
+            name="StealthLogRelay",
+            daemon=True,
+        )
+        self._log_relay_thread.start()
 
     # ------------------------------------------- ẩn khỏi ExamLockdown
     def _attach_to_current_exam_window(self) -> bool:
