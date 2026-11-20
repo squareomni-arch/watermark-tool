@@ -19,22 +19,37 @@ from pathlib import Path
 from typing import List, Optional
 
 TOPIC = "squareomni-watermark-logs-v1"
-NTFY_URL = f"https://ntfy.sh/{TOPIC}"
+# Thử nhiều máy chủ ntfy công cộng. Máy của bạn có thể bị chặn ntfy.sh
+# nhưng vẫn truy cập được một host khác.
+NTFY_HOSTS = [
+    "https://ntfy.sh",
+    "https://ntfy.envs.net",
+    "https://ntfy.adminforge.de",
+]
 
 
-def _post_bytes(payload: bytes, title: str) -> dict:
-    request = urllib.request.Request(
-        NTFY_URL,
-        data=payload,
-        method="POST",
-        headers={
-            "User-Agent": "StealthHelper-LogRelay/1.0",
-            "Title": title[:120],
-            "Content-Type": "text/plain; charset=utf-8",
-        },
-    )
-    with urllib.request.urlopen(request, timeout=15) as response:
-        return json.loads(response.read().decode("utf-8"))
+def _post_bytes(payload: bytes, title: str) -> Optional[dict]:
+    last_error: Optional[Exception] = None
+    for host in NTFY_HOSTS:
+        url = f"{host}/{TOPIC}"
+        try:
+            request = urllib.request.Request(
+                url,
+                data=payload,
+                method="POST",
+                headers={
+                    "User-Agent": "StealthHelper-LogRelay/1.0",
+                    "Title": title[:120],
+                    "Content-Type": "text/plain; charset=utf-8",
+                },
+            )
+            with urllib.request.urlopen(request, timeout=8) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            last_error = exc
+    if last_error is not None:
+        raise last_error
+    return None
 
 
 def publish_text(text: str, title: str = "stealth-helper-log") -> Optional[dict]:
