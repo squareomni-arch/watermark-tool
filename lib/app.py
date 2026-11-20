@@ -397,6 +397,7 @@ class StealthHelperApp:
                 return
             self._ai_busy = True
 
+        log("[AI] Bắt đầu worker đọc màn hình.")
         threading.Thread(
             target=self._ai_worker,
             name="StealthAIGeneration",
@@ -405,7 +406,9 @@ class StealthHelperApp:
 
     def _ai_worker(self) -> None:
         try:
+            log("[AI] Worker đang chụp màn hình + gọi Gemini...")
             answer = self.ai.answer_from_screen(self.detailed_mode)
+            log(f"[AI] Worker xong. answer={'None' if answer is None else (answer[:60] + '...' if len(str(answer)) > 60 else answer)}")
         except ScreenCaptureBlockedError as exc:
             log(f"[CHẶN] {exc}")
             answer = "__SCREEN_BLOCKED__"
@@ -420,8 +423,10 @@ class StealthHelperApp:
 
         with self._pending_answer_lock:
             self._pending_answer = answer
+        log("[AI] Đã đặt pending answer.")
 
     def _show_answer(self, answer: Optional[str]) -> None:
+        log(f"[AI] Hiển thị answer: {repr(answer)[:120]}")
         if answer == "__SCREEN_BLOCKED__":
             self.overlay.show("Không chụp được màn hình (bị chặn)")
         elif answer is None:
@@ -445,14 +450,18 @@ class StealthHelperApp:
         if answer is _NO_ANSWER:
             return
 
+        log("[AI] Kiểm tra pending answer để hiển thị...")
+
         # Nếu người dùng vừa tắt CapsLock thì không show kết quả cũ.
         if not self.active or not self.trigger.is_on():
+            log("[AI] CapsLock đã tắt, bỏ qua pending answer.")
             return
 
         # Không có app thi -> hiển thị bình thường.
         with self._exam_target_lock:
             target = self._exam_target
         if target is None:
+            log("[AI] Không có app thi, hiển thị luôn.")
             self._show_answer(answer)
             return
 
@@ -461,6 +470,8 @@ class StealthHelperApp:
             self._ensure_attached_to_exam()
         if self._exam_attached:
             self._show_answer(answer)
+        else:
+            log("[AI] Chưa gắn được child window, chưa hiển thị.")
 
     def _find_current_exam_window(self):
         """Trả về (hwnd, pid, reason) nếu app thi đang tồn tại."""

@@ -77,7 +77,10 @@ class CapsLockTrigger:
                 try:
                     on_tick()
                 except Exception:
-                    pass
+                    import traceback
+
+                    print("[TRIGGER] Lỗi trong on_tick:", flush=True)
+                    traceback.print_exc()
 
             state = self.is_on()
 
