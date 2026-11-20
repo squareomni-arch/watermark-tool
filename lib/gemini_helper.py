@@ -131,6 +131,7 @@ class GeminiHelper:
             self.detail_image_dimension = 2560
 
         self.available = bool(self.api_key)
+        self._temporarily_unlocked_windows: list = []
 
     # ------------------------------------------------------------------ chụp ảnh
     @staticmethod
@@ -189,6 +190,19 @@ class GeminiHelper:
         except Exception as exc:
             print(f"[WARNING] Không khôi phục được WDA_EXCLUDEFROMCAPTURE: {exc}")
 
+    def restore_capture_protection_now(self) -> None:
+        """Khôi phục ngay các cửa sổ WDA còn đang bị tool tạm mở.
+
+        App gọi phương thức này khi CapsLock tắt để đảm bảo ExamLockdown
+        không bao giờ phát hiện WDA bị gỡ sau khi tool đã chụp xong.
+        """
+        unlocked, self._temporarily_unlocked_windows = (
+            self._temporarily_unlocked_windows,
+            [],
+        )
+        if unlocked:
+            self._restore_capture_protection(unlocked)
+
     def _capture_screen_as_jpeg_b64(self, detailed: bool = False) -> Optional[str]:
         """Chụp màn hình chính, nén nhỏ và trả về ảnh JPEG dạng base64.
 
@@ -211,19 +225,20 @@ class GeminiHelper:
         # Trước khi chụp, tạm tắt WDA_EXCLUDEFROMCAPTURE. Ngay sau khi chụp,
         # bật lại ngay để ExamLockdown không phát hiện tamper.
         unlocked = self._unlock_excluded_from_capture()
+        self._temporarily_unlocked_windows = unlocked
 
         try:
             try:
                 image = ImageGrab.grab()
             except OSError as exc:
                 # Ví dụ: "The handle is invalid" khi đang ở secure desktop.
-                self._restore_capture_protection(unlocked)
+                self.restore_capture_protection_now()
                 raise ScreenCaptureBlockedError(
                     f"Windows không cho phép chụp màn hình lúc này: {exc}"
                 ) from exc
 
             # Khôi phục bảo vệ càng sớm càng tốt, trước khi xử lý ảnh.
-            self._restore_capture_protection(unlocked)
+            self.restore_capture_protection_now()
 
             if image is None:
                 raise ScreenCaptureBlockedError(
@@ -235,11 +250,12 @@ class GeminiHelper:
                 # WDA_EXCLUDEFROMCAPTURE có thể được app target bật lại ngay
                 # trước lúc ta chụp. Thử tắt tạm thêm lần nữa rồi chụp lại.
                 unlocked = self._unlock_excluded_from_capture()
+                self._temporarily_unlocked_windows = unlocked
                 try:
                     try:
                         image = ImageGrab.grab()
                     finally:
-                        self._restore_capture_protection(unlocked)
+                        self.restore_capture_protection_now()
                 except OSError:
                     image = None
                 if image is not None:

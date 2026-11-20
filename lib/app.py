@@ -419,6 +419,14 @@ class StealthHelperApp:
         log("[BẬT] CapsLock đang bật -> hiện watermark.")
 
     def deactivate(self) -> None:
+        # CapsLock tắt: khôi phục WDA ngay lập tức nếu tool còn đang giữ
+        # trạng thái tạm mở, tránh ExamLockdown phát hiện tamper.
+        if self.ai is not None:
+            try:
+                self.ai.restore_capture_protection_now()
+            except Exception:
+                pass
+
         if not self.active:
             # Lần đồng bộ đầu tiên: CapsLock đang tắt, không cần log ồn ào.
             if self.overlay is not None:
