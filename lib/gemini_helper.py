@@ -361,12 +361,18 @@ class GeminiHelper:
         try:
             print("[CAPTURE] Bắt đầu chụp màn hình...", flush=True)
 
-            # Nếu đang có cửa sổ app thi được xác định, thử chụp vùng cửa sổ đó
-            # sau khi tạm mở WDA trong thời gian cực ngắn rồi khôi phục ngay.
-            image = self._capture_exam_region_safely(ImageGrab)
+            # Ưu tiên 1: PrintWindow thẳng vào WebView2/app thi. Không đụng WDA,
+            # nên ExamLockdown mới (ForegroundTimer 250ms) không phát hiện tamper.
+            image = self._try_capture_exam_content_without_wda()
 
+            # Ưu tiên 2: chỉ khi PrintWindow không lấy được, mới tạm gỡ WDA
+            # đúng HWND, chụp vùng app thi, rồi bật lại ngay.
             if image is None:
-                # Trường hợp bình thường / không có app thi: chụp toàn màn hình.
+                print("[CAPTURE] PrintWindow không lấy được, thử WDA fallback...", flush=True)
+                image = self._capture_exam_region_safely(ImageGrab)
+
+            # Ưu tiên 3: ngoài app thi / không xác định được HWND: chụp toàn màn hình.
+            if image is None:
                 print("[CAPTURE] Chụp toàn màn hình bằng ImageGrab...", flush=True)
                 image = ImageGrab.grab()
                 print("[CAPTURE] ImageGrab.grab() đã trả về.", flush=True)

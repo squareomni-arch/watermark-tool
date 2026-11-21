@@ -523,19 +523,22 @@ class StealthHelperApp:
                 if affinity == 0x00000011:  # WDA_EXCLUDEFROMCAPTURE
                     return hwnd, pid, f"kiosk_wda:{name}"
 
-            # 2) Foreground WPF/WDA: rename-proof, chỉ chạy khi CapsLock bật.
+            # 2) Foreground WDA / fullscreen WPF: rename-proof, chỉ chạy khi
+            # CapsLock bật. KHÔNG coi cửa sổ WPF preflight là app thi kiosk;
+            # nếu attach quá sớm sẽ làm ExamLockdown Not Responding / hỏng submit.
             fg = get_foreground_window()
             if fg is not None:
                 fg_hwnd, fg_pid, fg_reason = fg
                 info = describe_visible_window(fg_hwnd) or {}
                 class_lower = str(info.get("class", "")).lower()
-                if (
-                    info.get("wda") == 0x00000011
-                    or class_lower.startswith("hwndwrapper")
-                ):
-                    return fg_hwnd, fg_pid, "kiosk_foreground:" + fg_reason
+                coverage = float(info.get("coverage", 0.0))
+                if info.get("wda") == 0x00000011:
+                    return fg_hwnd, fg_pid, "kiosk_foreground_wda:" + fg_reason
+                if coverage >= 0.8 and class_lower.startswith("hwndwrapper"):
+                    return fg_hwnd, fg_pid, "kiosk_foreground_fullscreen:" + fg_reason
 
-            # 3) Fullscreen WPF/WDA: rename-proof fallback.
+            # 3) Fullscreen WPF/WDA: rename-proof fallback. Hàm này đã lọc shell
+            # và chỉ nhận fullscreen + WPF/WDA.
             defensive = find_fullscreen_candidate_window()
             if defensive is not None:
                 return defensive[0], defensive[1], "kiosk_fullscreen:" + defensive[2]
