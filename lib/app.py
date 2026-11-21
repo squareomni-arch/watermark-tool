@@ -95,6 +95,8 @@ class StealthHelperApp:
         self._last_defensive_log_at = 0.0
         self._last_exam_tick_log = ""
         self._last_exam_tick_log_at = 0.0
+        self._last_handled_exam = None
+        self._last_handled_exam_at = 0.0
 
     # ------------------------------------------------------------------ chạy
     def start(self) -> None:
@@ -292,6 +294,15 @@ class StealthHelperApp:
         Không spawn/đổi parent process để tránh ảnh hưởng tới app thi.
         """
         exam_hwnd, exam_pid, reason = found
+
+        # Tránh xử lý/log lặp liên tục cho cùng một cửa sổ trong 1 giây.
+        now = time.monotonic()
+        key = (exam_hwnd, exam_pid)
+        if key == self._last_handled_exam and now - self._last_handled_exam_at < 1.0:
+            return
+        self._last_handled_exam = key
+        self._last_handled_exam_at = now
+
         _evade_log(
             f"EXAM_FOUND[{source}] hwnd={exam_hwnd} pid={exam_pid} reason={reason} "
             f"self_pid={os.getpid()} self_parent={os.getppid()}"

@@ -338,10 +338,15 @@ class WatermarkOverlay:
             exstyle &= ~WS_EX_TOPMOST
             self._user32.SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, exstyle)
 
-            # KHÔNG kiểm tra giá trị trả về của SetParent: với cửa sổ top-level,
-            # SetParent thành công trả về parent CŨ là NULL, giống hệt lỗi.
-            # Phải kiểm tra parent thực tế sau khi gọi.
-            self._user32.SetParent(self.hwnd, parent_hwnd)
+            # Nếu overlay đang bị kẹt làm con của parent cũ đã bị hủy, phải
+            # tách ra desktop trước rồi mới gắn sang parent mới.
+            actual_parent = int(self._user32.GetParent(self.hwnd) or 0)
+            if actual_parent and actual_parent != int(parent_hwnd):
+                self._user32.SetParent(self.hwnd, None)
+                self._user32.SetParent(self.hwnd, parent_hwnd)
+            else:
+                self._user32.SetParent(self.hwnd, parent_hwnd)
+
             if int(self._user32.GetParent(self.hwnd) or 0) != int(parent_hwnd):
                 return False
 
