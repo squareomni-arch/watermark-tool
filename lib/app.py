@@ -199,7 +199,13 @@ class StealthHelperApp:
         _evade_log(f"WATCHER_THREAD_STARTED pid={os.getpid()}")
 
         try:
-            from .exam_evasion import find_processes_by_names, find_window_for_process
+            from .exam_evasion import (
+                describe_visible_window,
+                find_fullscreen_candidate_window,
+                find_processes_by_names,
+                find_window_for_process,
+                get_foreground_window,
+            )
         except Exception as exc:
             _evade_log(f"WATCHER_IMPORT_FAILED {exc!r}")
             return
@@ -208,6 +214,7 @@ class StealthHelperApp:
 
         last_exam_pid: Optional[int] = None
         last_heartbeat_log = 0.0
+        last_fallback_scan = 0.0
 
         while self._running:
             try:
@@ -219,7 +226,32 @@ class StealthHelperApp:
                         f"overlay_active={self.overlay.active if self.overlay else None}"
                     )
 
+                # Lớp 1: process-name detection (nhanh, hỗ trợ ExamLockdown hiện tại).
                 exam_procs = find_processes_by_names(self._exam_process_names)
+
+                # Lớp 2: foreground window behavior — rename-proof. Nếu cửa sổ
+                # foreground là fullscreen WPF / có WDA_EXCLUDEFROMCAPTURE, coi
+                # đó là app thi mà không cần biết tên process.
+                if not exam_procs:
+                    fg = get_foreground_window()
+                    if fg is not None:
+                        fg_hwnd, fg_pid, fg_reason = fg
+                        info = describe_visible_window(fg_hwnd) or {}
+                        class_lower = str(info.get("class", "")).lower()
+                        if (
+                            info.get("wda") == 0x00000011
+                            or class_lower.startswith("hwndwrapper")
+                        ):
+                            exam_procs = {"<foreground>": fg_pid}
+
+                # Lớp 3: quét thưa các cửa sổ fullscreen WPF/WDA. Lớp này bắt
+                # app thi đổi tên và không giành foreground, nhưng không quét
+                # liên tục để tránh EnumWindows/GetWindowText gây treo.
+                if not exam_procs and now - last_fallback_scan >= 0.8:
+                    last_fallback_scan = now
+                    defensive = find_fullscreen_candidate_window()
+                    if defensive is not None:
+                        exam_procs = {"<fullscreen>": defensive[1]}
 
                 if exam_procs:
                     if not self._exam_process_seen:
