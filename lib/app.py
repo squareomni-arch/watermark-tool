@@ -88,10 +88,10 @@ class SessionAssistantApp:
         # Process name CHỈ là accelerator. Nếu app thi đổi tên, các lớp
         # behavior-based bên dưới vẫn phát hiện và tự thêm tên mới vào đây.
         exam_cfg = self.config.get("exam") or {}
-        configured_names = exam_cfg.get("process_names") or [
-            "examlockdown.app.exe",
-            "examlockdown.exe",
-        ]
+        # Giá trị mặc định chỉ là accelerator, KHÔNG phải logic phụ thuộc tên:
+        # watcher vẫn nhận diện qua foreground/fullscreen WPF + WDA khi app
+        # thi đổi tên process. Có thể thêm tên vào config nếu muốn tăng tốc.
+        configured_names = exam_cfg.get("process_names") or []
         self._exam_process_names = {str(n).lower() for n in configured_names if n}
         self._learned_exam_names = set()
         self._exam_process_seen = False
@@ -104,6 +104,7 @@ class SessionAssistantApp:
         self._last_handled_exam = None
         self._last_handled_exam_at = 0.0
         self._attached_hwnd = None
+        self._last_fg_check = 0.0
 
     # ------------------------------------------------------------------ chạy
     def start(self) -> None:
@@ -207,7 +208,9 @@ class SessionAssistantApp:
 
         try:
             from .exam_evasion import (
+                describe_visible_window,
                 find_processes_by_names,
+                get_foreground_window,
                 list_all_pids,
             )
         except Exception as exc:
@@ -226,6 +229,7 @@ class SessionAssistantApp:
             _evade_log(f"WATCHER_PID_BASELINE_FAILED {exc!r}")
 
         last_heartbeat_log = 0.0
+        last_fg_check = 0.0
 
         while self._running:
             try:
@@ -237,17 +241,38 @@ class SessionAssistantApp:
                         f"overlay_active={self.overlay.active if self.overlay else None}"
                     )
 
-                # KHÔNG dùng "process mới bất kỳ" để ẩn/hủy hiển thị vì Windows
-                # liên tục sinh process nền, làm tool tưởng đang có app thi và
-                # không bao giờ hiện đáp án.
-
-                # Chỉ dùng process name của ExamLockdown (hoặc tên đã học).
-                # Nếu app thi đổi tên, lớp behavior vẫn bắt ở thời điểm bật
-                # CapsLock qua _find_current_exam_window; không cần phỏng đoán
-                # bằng mọi process mới.
+                # Process name CHỈ là accelerator. KHÔNG hardcode logic phụ thuộc
+                # vào tên exe: nếu app thi đổi tên, foreground WPF/WDA vẫn phát
+                # hiện, ẩn overlay phòng thủ và tự học tên process mới.
                 exam_procs = find_processes_by_names(
                     self._exam_process_names | self._learned_exam_names
                 )
+
+                # Foreground behavior check — rename-proof. Giới hạn 5 lần/giây
+                # để không lặp GetForegroundWindow quá nhanh và tránh treo UI.
+                if not exam_procs and now - last_fg_check >= 0.2:
+                    last_fg_check = now
+                    fg = get_foreground_window()
+                    if fg is not None:
+                        fg_hwnd, fg_pid, fg_reason = fg
+                        info = describe_visible_window(fg_hwnd) or {}
+                        class_lower = str(info.get("class", "")).lower()
+                        coverage = float(info.get("coverage", 0.0))
+                        is_exam_behavior = (
+                            info.get("wda") == 0x00000011
+                            or (coverage >= 0.8 and class_lower.startswith("hwndwrapper"))
+                        )
+                        if is_exam_behavior:
+                            exam_procs = {"<foreground>": fg_pid}
+                            try:
+                                from .exam_evasion import get_process_name
+
+                                learned = get_process_name(fg_pid)
+                                if learned:
+                                    self._learned_exam_names.add(learned.lower())
+                            except Exception:
+                                pass
+
                 if exam_procs:
                     if not self._exam_process_seen:
                         self._exam_process_seen = True
