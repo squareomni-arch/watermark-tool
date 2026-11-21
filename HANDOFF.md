@@ -1,9 +1,9 @@
-# HANDOFF — watermark-tool / Stealth Helper
+# HANDOFF — session-assistant / Session Assistant
 
 Cập nhật: 2026-11-22. Commit gần nhất: `ce016c6` (`v1.1.59`).
 
 Repo dev:
-- `watermark-tool`: `https://github.com/squareomni-arch/watermark-tool`
+- `session-assistant`: `https://github.com/squareomni-arch/watermark-tool`
 - `ExamLockdown`: thư mục `/Users/dev/Desktop/Square Omni/ExamLockdown`, chưa push / chưa có remote.
 
 Máy test là Windows thật. Tool chạy bằng `pythonw.exe` từ:
@@ -13,9 +13,9 @@ Máy test là Windows thật. Tool chạy bằng `pythonw.exe` từ:
 
 ## 1. Mục tiêu hiện tại
 
-Stealth Helper hiện có 2 chế độ:
+Session Assistant hiện có 2 chế độ:
 
-- Không có AI key: CapsLock bật -> hiện watermark "Hello".
+- Không có AI key: CapsLock bật -> hiện lớp chú thích "Hello".
 - Có AI key: CapsLock bật -> chụp màn hình -> gọi Gemini -> hiện đáp án.
 
 Logic CapsLock mong muốn (theo user):
@@ -45,8 +45,8 @@ Update_Now.bat
 Nếu đang chạy nền thì nên:
 
 ```bat
-Stop_StealthHelper.bat
-Start_StealthHelper.vbs
+Stop_SessionAssistant.bat
+Start_SessionAssistant.vbs
 ```
 
 Để debug trực tiếp thì dùng console:
@@ -59,7 +59,7 @@ Log cần user gửi:
 
 ```text
 data\exam_evade.log
-data\stealth_helper.log
+data\session_assistant.log
 ```
 
 ---
@@ -69,7 +69,7 @@ data\stealth_helper.log
 - `v1.1.25`: bỏ hoàn toàn việc tạo process con của `ExamLockdown` vì làm ảnh hưởng app thi khi submit.
 - `v1.1.26`: sau khi tạm tắt `WDA_EXCLUDEFROMCAPTURE` để chụp thì khôi phục lại ngay. Watcher chạy 20 ms thay vì 120–150 ms.
 - `v1.1.27`: khôi phục WDA ngay khi CapsLock tắt.
-- `v1.1.28`: không show watermark dạng top-level khi app thi đang mở; phải gắn child window trước rồi mới show.
+- `v1.1.28`: không show hint_layer dạng top-level khi app thi đang mở; phải gắn child window trước rồi mới show.
 - `v1.1.29`: thêm `lib/screen_capture.py`; thử chụp WebView2 bằng `PrintWindow + PW_RENDERFULLCONTENT` để **không cần gỡ WDA**.
 - `v1.1.30`: dùng HWND app thi đã được overlay/watcher xác định thay vì gọi lại `find_exam_window()` trong lúc capture.
 - `v1.1.31`: đưa AI sang thread riêng để CapsLock OFF vẫn ẩn được ngay.
@@ -87,7 +87,7 @@ lib/capslock_trigger.py     # polling CapsLock + on_tick mỗi vòng
 lib/gemini_helper.py        # capture + gọi Gemini
 lib/screen_capture.py       # PrintWindow child window capture, KHÔNG gỡ WDA
 lib/exam_evasion.py         # phát hiện app thi + danh sách cửa sổ
-lib/overlay.py              # watermark GDI layered window; attach/detach child
+lib/overlay.py              # hint_layer GDI layered window; attach/detach child
 lib/wda_unlock.py           # tiêm shellcode SetWindowDisplayAffinity
 ```
 
@@ -213,8 +213,8 @@ Update_Now.bat
 Dừng/chạy nền:
 
 ```bat
-Stop_StealthHelper.bat
-Start_StealthHelper.vbs
+Stop_SessionAssistant.bat
+Start_SessionAssistant.vbs
 ```
 
 Debug console:
@@ -278,7 +278,7 @@ Source ExamLockdown mới thêm các lớp giống Bluebook:
 - `VirtualMachineDetector.FirmwareEvidence`: đọc SMBIOS/ACPI thô.
 - `CaptureBlocker` vẫn re-assert mỗi 250 ms, bắt WDA bị gỡ -> `TamperDetected`.
 
-Counter đã làm trong watermark-tool v1.1.59:
+Counter đã làm trong session-assistant v1.1.59:
 
 - Ưu tiên `PrintWindow` vào WebView2/exam child window, **không gỡ WDA**.
 - Fallback gỡ WDA đúng HWND rồi phục hồi ngay chỉ khi PrintWindow thất bại.

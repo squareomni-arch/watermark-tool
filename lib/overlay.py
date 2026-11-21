@@ -1,6 +1,6 @@
-"""Watermark overlay cho Windows - chỉ dùng ctypes + GDI, KHÔNG cần pywin32.
+"""Desktop hint overlay cho Windows - chỉ dùng ctypes + GDI, KHÔNG cần pywin32.
 
-Vẽ chữ (mặc định "Hello") màu vàng, mờ nhẹ như watermark, ở góc trên bên phải
+Vẽ chữ (mặc định "Hello") màu vàng, mờ nhẹ như hint_layer, ở góc trên bên phải
 màn hình. Cửa sổ là layered window với alpha từng điểm ảnh nên nền hoàn toàn
 trong suốt, chỉ có chữ hiện lên; chuột click xuyên qua, không cướp focus.
 
@@ -230,8 +230,8 @@ def enable_dpi_awareness() -> None:
 
 
 # --------------------------------------------------------------------- overlay
-class WatermarkOverlay:
-    """Chữ watermark mờ, luôn nổi trên cùng, click xuyên qua."""
+class DesktopHintLayer:
+    """Chữ lớp chú thích mờ, luôn nổi trên cùng, click xuyên qua."""
 
     def __init__(self, settings: Optional[Dict] = None):
         settings = dict(settings or {})
@@ -300,7 +300,7 @@ class WatermarkOverlay:
         return self._parent_hwnd is not None and self.hwnd is not None
 
     def reposition(self) -> None:
-        """Đặt lại vị trí watermark theo kích thước hiện tại của màn hình/parent."""
+        """Đặt lại vị trí hint_layer theo kích thước hiện tại của màn hình/parent."""
         if not self.hwnd or not self.active:
             return
         x, y = self._position()
@@ -312,11 +312,11 @@ class WatermarkOverlay:
 
     # ------------------------------------------------------------- ẩn khỏi EnumWindows
     def attach_to(self, parent_hwnd: int) -> bool:
-        """Gắn watermark vào cửa sổ app thi để nó không còn là top-level window.
+        """Gắn hint_layer vào cửa sổ app thi để nó không còn là top-level window.
 
         ExamLockdown quét mọi cửa sổ top-level đang hiện (kể cả toolwindow/layered)
         rồi kill process chủ. Cửa sổ con (WS_CHILD) không được EnumWindows liệt kê,
-        nên watermark vẫn hiển thị mà process của tool không bị diệt.
+        nên hint_layer vẫn hiển thị mà process của tool không bị diệt.
         """
         if not self.hwnd or not parent_hwnd:
             return False
@@ -366,7 +366,7 @@ class WatermarkOverlay:
             return False
 
     def detach_from_parent(self) -> bool:
-        """Đưa watermark trở lại thành top-level khi app thi đã thoát."""
+        """Đưa hint_layer trở lại thành top-level khi app thi đã thoát."""
         if not self.hwnd or self._parent_hwnd is None:
             return False
 
@@ -486,15 +486,15 @@ class WatermarkOverlay:
         self._wndproc_ref = WNDPROC(self._wnd_proc)
         wndclass = WNDCLASSW()
         wndclass.hInstance = hinst
-        wndclass.lpszClassName = "StealthHelperWatermark"
+        wndclass.lpszClassName = "DesktopHintLayer"
         wndclass.lpfnWndProc = self._wndproc_ref
         self._user32.RegisterClassW(ctypes.byref(wndclass))
 
         self.hwnd = self._user32.CreateWindowExW(
             WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST
             | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
-            "StealthHelperWatermark",
-            "Stealth Helper Watermark",
+            "DesktopHintLayer",
+            "Session Assistant Hint Layer",
             WS_POPUP,
             0, 0, 1, 1,
             None, None, hinst, None,
@@ -646,7 +646,7 @@ class WatermarkOverlay:
 
         if self._parent_hwnd and self._user32.IsWindow(self._parent_hwnd):
             # Cửa sổ overlay là cửa sổ con của app thi: tọa độ tính theo client
-            # của parent. Nhờ vậy watermark không nằm trong danh sách top-level
+            # của parent. Nhờ vậy hint_layer không nằm trong danh sách top-level
             # mà ExamLockdown dùng để diệt overlay.
             client = RECT()
             if not self._user32.GetClientRect(self._parent_hwnd, ctypes.byref(client)):
@@ -718,7 +718,7 @@ class WatermarkOverlay:
 
     # ------------------------------------------------------------- hiện / ẩn
     def show(self, text: Optional[str] = None, position: Optional[Tuple[int, int]] = None) -> bool:
-        """Hiện watermark. Trả về False nếu nền tảng/thư viện không hỗ trợ."""
+        """Hiện hint_layer. Trả về False nếu nền tảng/thư viện không hỗ trợ."""
         return self._show(text, position, multiline=False)
 
     def show_lines(
@@ -785,7 +785,7 @@ class WatermarkOverlay:
         return True
 
     def hide(self) -> None:
-        """Ẩn watermark."""
+        """Ẩn hint_layer."""
         if self.hwnd and self.active:
             self._user32.ShowWindow(self.hwnd, SW_HIDE)
             self.active = False

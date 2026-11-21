@@ -1,7 +1,7 @@
 @echo off
 @chcp 65001 >nul
 setlocal EnableExtensions
-title Stealth Helper - Cap nhat bang tay
+title Session Assistant - Cap nhat bang tay
 cd /d "%~dp0"
 
 set "PYTHON_EXE="
@@ -32,7 +32,7 @@ if not defined PYTHON_EXE (
     exit /b 1
 )
 
-echo Dang cap nhat Stealth Helper...
+echo Dang cap nhat Session Assistant...
 echo Python: "%PYTHON_EXE%"
 echo.
 
@@ -46,10 +46,10 @@ if not "%RC%"=="0" (
     echo Chi tiet loi nam trong file: data\update_now.log
     echo.
     echo Goi y: chay run.bat de xem loi chi tiet, hoac cap nhat bang tay:
-    echo   1. Tai file watermark-tool-*.zip moi nhat tren GitHub Releases
+    echo   1. Tai file session-assistant-*.zip moi nhat tren GitHub Releases
     echo   2. Giai nen de len thu muc nay
 ) else (
-    echo Cap nhat hoan tat. Hay bam Start_StealthHelper.vbs de chay.
+    echo Cap nhat hoan tat. Hay bam Start_SessionAssistant.vbs de chay.
 )
 echo.
 pause

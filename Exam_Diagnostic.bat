@@ -1,11 +1,11 @@
 @echo off
 @chcp 65001 >nul
 setlocal EnableExtensions
-title Stealth Helper - Exam Diagnostic
+title Session Assistant - Exam Diagnostic
 cd /d "%~dp0"
 
 echo ============================================================
-echo  STEALTH HELPER - CHAN DOAN EXAM LOCKDOWN
+echo  SESSION ASSISTANT - CHAN DOAN EXAM LOCKDOWN
 echo  (Mo app thi len truoc khi chay file nay)
 echo ============================================================
 echo.

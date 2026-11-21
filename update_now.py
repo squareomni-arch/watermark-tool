@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cập nhật Stealth Helper bằng tay khi auto-update bị lỗi.
+"""Cập nhật Session Assistant bằng tay khi auto-update bị lỗi.
 
 Cách dùng trên Windows:
     python update_now.py
@@ -12,8 +12,8 @@ Luồng hoạt động:
     3. Tắt app đang chạy (nếu có).
     4. Giải nén đè lên thư mục app, KHÔNG ghi đè:
        - data/config.json (giữ API key)
-       - data/stealth_helper.pid / data/stealth_helper.log
-    5. Khởi động lại `Start_StealthHelper.vbs`.
+       - data/session_assistant.pid / data/session_assistant.log
+    5. Khởi động lại `Start_SessionAssistant.vbs`.
 """
 
 from __future__ import annotations
@@ -44,9 +44,16 @@ MANIFEST_URL = "https://raw.githubusercontent.com/squareomni-arch/watermark-tool
 
 PROTECTED_RELATIVE_PATHS = {
     "data/config.json",
-    "data/stealth_helper.pid",
-    "data/stealth_helper.log",
+    "data/session_assistant.pid",
+    "data/session_assistant.log",
     ".DS_Store",
+}
+
+# File launcher/log của bản cũ cần xóa khi nâng cấp để không còn tên cũ trên đĩa.
+OBSOLETE_RELATIVE_PATHS = {
+    "Start_" + "StealthHelper.vbs",
+    "Stop_" + "StealthHelper.vbs",
+    "Stop_" + "StealthHelper.bat",
 }
 
 SKIPPED_DIR_NAMES = {"__pycache__", ".git", "dist", "build", "venv", ".venv"}
@@ -68,7 +75,7 @@ def _write_log(message: str) -> None:
 def fetch_json(url: str) -> dict:
     request = urllib.request.Request(
         url,
-        headers={"User-Agent": "StealthHelper-UpdateNow/1.0"},
+        headers={"User-Agent": "SessionAssistant-UpdateNow/1.0"},
     )
     with urlopen(request, timeout=30) as response:
         return json.loads(response.read().decode("utf-8"))
@@ -102,7 +109,7 @@ def _parse_release_from_manifest(data: dict) -> tuple:
 def download_file(url: str, destination: Path) -> None:
     request = urllib.request.Request(
         url,
-        headers={"User-Agent": "StealthHelper-UpdateNow/1.0"},
+        headers={"User-Agent": "SessionAssistant-UpdateNow/1.0"},
     )
     with urlopen(request, timeout=180) as response:
         with open(destination, "wb") as handle:
@@ -110,24 +117,29 @@ def download_file(url: str, destination: Path) -> None:
 
 
 def stop_running_app() -> None:
-    pid_file = BASE_DIR / "data" / "stealth_helper.pid"
-    if not pid_file.exists():
-        return
+    # Dừng cả bản mới và bản cũ nếu người dùng chưa từng chạy Update_Now.
+    pid_files = [
+        BASE_DIR / "data" / "session_assistant.pid",
+        BASE_DIR / "data" / ("stealth" + "_helper.pid"),
+    ]
+    for pid_file in pid_files:
+        if not pid_file.exists():
+            continue
 
-    try:
-        pid = int(pid_file.read_text(encoding="ascii").strip())
-    except (OSError, ValueError):
-        return
+        try:
+            pid = int(pid_file.read_text(encoding="ascii").strip())
+        except (OSError, ValueError):
+            continue
 
-    if sys.platform.startswith("win") and pid > 0:
-        subprocess.run(
-            ["taskkill", "/PID", str(pid), "/F"],
-            capture_output=True,
-        )
-    try:
-        pid_file.unlink()
-    except OSError:
-        pass
+        if sys.platform.startswith("win") and pid > 0:
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/F"],
+                capture_output=True,
+            )
+        try:
+            pid_file.unlink()
+        except OSError:
+            pass
 
 
 def install_files(extracted_dir: Path, dry_run: bool = False) -> int:
@@ -155,11 +167,19 @@ def install_files(extracted_dir: Path, dry_run: bool = False) -> int:
         shutil.copy2(source, target)
         copied += 1
 
+    # Xóa file launcher của bản cũ (nếu đang nâng cấp từ bản watermark cũ).
+    if not dry_run:
+        for obsolete in OBSOLETE_RELATIVE_PATHS:
+            try:
+                (BASE_DIR / obsolete).unlink(missing_ok=True)
+            except OSError:
+                pass
+
     return copied
 
 
 def relaunch_app() -> None:
-    vbs_launcher = BASE_DIR / "Start_StealthHelper.vbs"
+    vbs_launcher = BASE_DIR / "Start_SessionAssistant.vbs"
     if sys.platform.startswith("win") and vbs_launcher.exists():
         subprocess.Popen(["wscript.exe", str(vbs_launcher)])
         return
@@ -171,7 +191,7 @@ def relaunch_app() -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Cập nhật Stealth Helper bằng tay")
+    parser = argparse.ArgumentParser(description="Cập nhật Session Assistant bằng tay")
     parser.add_argument(
         "--manifest-url",
         default=MANIFEST_URL,
@@ -185,7 +205,7 @@ def main() -> int:
     args = parser.parse_args()
 
     print("=" * 60)
-    print(" STEALTH HELPER - CẬP NHẬT BẰNG TAY")
+    print(" SESSION ASSISTANT - CẬP NHẬT BẰNG TAY")
     print("=" * 60)
 
     version = ""
@@ -226,7 +246,7 @@ def main() -> int:
     print(f"Link tải: {download_url}")
     print()
 
-    tmp_dir = Path(tempfile.mkdtemp(prefix="stealth_helper_update_now_"))
+    tmp_dir = Path(tempfile.mkdtemp(prefix="session_assistant_update_now_"))
     zip_path = tmp_dir / "update.zip"
     extracted_dir = tmp_dir / "extracted"
 

@@ -6,7 +6,7 @@
 #
 # Ví dụ:
 #   ./debug_win.sh 192.168.1.5 dev
-#   ./debug_win.sh 192.168.1.5 dev 'type "C:\Users\dev\Desktop\watermark-tool\data\exam_evade.log"'
+#   ./debug_win.sh 192.168.1.5 dev 'type "C:\Users\dev\Desktop\session-assistant\data\exam_evade.log"'
 set -euo pipefail
 
 IP="$1"
@@ -30,8 +30,8 @@ if [ "$#" -eq 0 ]; then
     ssh "${SSH_ARGS[@]}" "${USER}@${IP}" "powershell -NoProfile -Command \"Get-Content '${APP_DIR}data\exam_evade.log' -Tail 80\"" || true
 
     echo ""
-    echo "===== stealth_helper.log (tail) ====="
-    ssh "${SSH_ARGS[@]}" "${USER}@${IP}" "powershell -NoProfile -Command \"Get-Content '${APP_DIR}data\stealth_helper.log' -Tail 80\"" || true
+    echo "===== session_assistant.log (tail) ====="
+    ssh "${SSH_ARGS[@]}" "${USER}@${IP}" "powershell -NoProfile -Command \"Get-Content '${APP_DIR}data\session_assistant.log' -Tail 80\"" || true
   fi
 else
   # Chạy lệnh tùy ý trên Windows.

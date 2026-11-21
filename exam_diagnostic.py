@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Chẩn đoán vì sao watermark bị ExamLockdown kill trên máy Windows.
+"""Chẩn đoán vì sao hint_layer bị ExamLockdown kill trên máy Windows.
 
 Chạy thủ công TRƯỚC KHI mở app thi, hoặc ngay khi app thi đang mở:
 
@@ -55,7 +55,7 @@ def _open_process_success(pid: int) -> bool:
 
 def main() -> int:
     print("=" * 70)
-    print(" STEALTH HELPER - EXAM LOCKDOWN DIAGNOSTIC")
+    print(" SESSION ASSISTANT - EXAM LOCKDOWN DIAGNOSTIC")
     print("=" * 70)
     print(f" Current PID   : {os.getpid()}")
     print(f" sys.executable: {sys.executable}")
@@ -77,10 +77,10 @@ def main() -> int:
     print(f"  OpenProcess(PROCESS_CREATE_PROCESS): {_open_process_success(exam_pid)}")
     print()
 
-    from lib.overlay import WatermarkOverlay
+    from lib.overlay import DesktopHintLayer
 
-    print("Đang gắn thử watermark vào cửa sổ app thi...")
-    overlay = WatermarkOverlay({"text": "DIAG", "corner": "top_right"})
+    print("Đang gắn thử hint_layer vào cửa sổ app thi...")
+    overlay = DesktopHintLayer({"text": "DIAG", "corner": "top_right"})
     try:
         ok = overlay.attach_to(exam_hwnd)
         print(f"  attach_to()          : {ok}")

@@ -1,7 +1,7 @@
 """Bộ điều phối chính của app (Windows).
 
-CapsLock BẬT  -> app hoạt động: hiện chữ watermark ở góc trên bên phải
-CapsLock TẮT  -> app dừng: ẩn watermark
+CapsLock BẬT  -> app hoạt động: hiện lớp chú thích ở góc trên bên phải
+CapsLock TẮT  -> app dừng: ẩn lớp chú thích
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from typing import Dict, Optional
 
 from .capslock_trigger import CapsLockTrigger
 from .gemini_helper import GeminiHelper, ScreenCaptureBlockedError
-from .overlay import WatermarkOverlay
+from .overlay import DesktopHintLayer
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 EVADE_LOG_FILE = BASE_DIR / "data" / "exam_evade.log"
@@ -37,7 +37,7 @@ def _evade_log(message: str) -> None:
         pass
 
 
-class StealthHelperApp:
+class SessionAssistantApp:
     def __init__(self, config: Optional[Dict] = None):
         self.config = config or {}
 
@@ -45,11 +45,11 @@ class StealthHelperApp:
         self.trigger = CapsLockTrigger(poll_interval=trigger_cfg.get("poll_interval", 0.1))
 
         features = self.config.get("features") or {}
-        self.overlay: Optional[WatermarkOverlay] = None
+        self.overlay: Optional[DesktopHintLayer] = None
         if features.get("overlay", True):
-            self.overlay = WatermarkOverlay(self.config.get("watermark") or {})
+            self.overlay = DesktopHintLayer(self.config.get("hint_layer") or {})
             if not self.overlay.available:
-                log("[CẢNH BÁO] Không tạo được watermark - app vẫn chạy, chỉ báo trong console.")
+                log("[CẢNH BÁO] Không tạo được hint_layer - app vẫn chạy, chỉ báo trong console.")
                 self.overlay = None
 
         self.ai: Optional[GeminiHelper] = None
@@ -171,7 +171,7 @@ class StealthHelperApp:
                 return False
 
             self._exam_attached = True
-            log(f"[EVADE] Process con đã gắn watermark vào cửa sổ app thi hwnd={exam_hwnd}, pid={exam_pid}.")
+            log(f"[EVADE] Process con đã gắn hint_layer vào cửa sổ app thi hwnd={exam_hwnd}, pid={exam_pid}.")
             return True
         except Exception as exc:
             _evade_log(f"ATTACH_AT_START ERROR {exc!r}")
@@ -271,7 +271,7 @@ class StealthHelperApp:
                 time.sleep(0.2)
 
     def _hide_overlay_immediately(self, reason: str) -> None:
-        """Ẩn watermark ngay trên thread watcher để chạy đua với ExamLockdown."""
+        """Ẩn hint_layer ngay trên thread watcher để chạy đua với ExamLockdown."""
         if self.overlay is not None and self.overlay.active:
             self.overlay.hide()
 
@@ -283,7 +283,7 @@ class StealthHelperApp:
             _evade_log(reason)
 
     def _hide_for_new_windows(self) -> None:
-        """Ẩn watermark nếu có cửa sổ top-level mới xuất hiện."""
+        """Ẩn hint_layer nếu có cửa sổ top-level mới xuất hiện."""
         try:
             from .exam_evasion import describe_visible_window, snapshot_visible_windows
 
@@ -304,7 +304,7 @@ class StealthHelperApp:
     def _handle_exam_found(self, found: tuple, source: str) -> None:
         """Xử lý khi phát hiện app thi.
 
-        Chỉ ẩn watermark rồi đưa target cho _exam_tick gắn cửa sổ con.
+        Chỉ ẩn lớp chú thích rồi đưa target cho _exam_tick gắn cửa sổ con.
         Không spawn/đổi parent process để tránh ảnh hưởng tới app thi.
         """
         exam_hwnd, exam_pid, reason = found
@@ -386,7 +386,7 @@ class StealthHelperApp:
             self._exam_attach_ready.set()
             self._attached_hwnd = exam_hwnd
             # Nếu CapsLock đang bật nhưng lúc trước ta cố tình chưa show để tránh
-            # top-level race, thì giờ đã an toàn để hiện watermark.
+            # top-level race, thì giờ đã an toàn để hiện lớp chú thích.
             if self.active and not self.overlay.active:
                 self.overlay.show()
         else:
@@ -394,7 +394,7 @@ class StealthHelperApp:
             self._exam_attach_ready.clear()
             self._attached_hwnd = None
             if self.overlay.hwnd:
-                log("[EVADE] Không gắn được watermark vào cửa sổ app thi (SetParent thất bại).")
+                log("[EVADE] Không gắn được hint_layer vào cửa sổ app thi (SetParent thất bại).")
 
         self._process_pending_answer()
 
@@ -409,7 +409,7 @@ class StealthHelperApp:
         log("[AI] Bắt đầu worker đọc màn hình.")
         threading.Thread(
             target=self._ai_worker,
-            name="StealthAIGeneration",
+            name="VisionGeneration",
             daemon=True,
         ).start()
 
@@ -589,7 +589,7 @@ class StealthHelperApp:
         # ExamLockdown sẽ kill process. Phải gắn thành child window trước.
         if not self._ensure_attached_to_exam():
             _evade_log("ACTIVATE_BLOCKED_NO_CHILD_ATTACH")
-            log("[BẬT] CapsLock đang bật, nhưng chưa gắn được watermark vào app thi.")
+            log("[BẬT] CapsLock đang bật, nhưng chưa gắn được hint_layer vào app thi.")
             return
 
         if self.ai is not None:
@@ -600,7 +600,7 @@ class StealthHelperApp:
             return
 
         self.overlay.show()
-        log("[BẬT] CapsLock đang bật -> hiện watermark.")
+        log("[BẬT] CapsLock đang bật -> hiện lớp chú thích.")
 
     def deactivate(self) -> None:
         # CapsLock tắt: khôi phục WDA ngay lập tức nếu tool còn đang giữ
@@ -623,22 +623,22 @@ class StealthHelperApp:
         self.active = False
         if self.overlay is not None:
             self.overlay.hide()
-        log("[TẮT] CapsLock đã tắt -> ẩn watermark.")
+        log("[TẮT] CapsLock đã tắt -> ẩn lớp chú thích.")
 
     # ------------------------------------------------------------------ phụ
     def _print_banner(self) -> None:
         print("=" * 60)
-        print(" STEALTH HELPER (Windows)")
+        print(" SESSION ASSISTANT (Windows)")
         if self.ai is not None:
             if self.detailed_mode:
                 print(" Bật CapsLock  -> đọc đề + trả lời TẤT CẢ câu hỏi (chi tiết)")
             else:
                 print(" Bật CapsLock  -> đọc màn hình + Gemini trả lời")
         else:
-            print(" Bật CapsLock  -> hiện watermark")
+            print(" Bật CapsLock  -> hiện lớp chú thích")
         print(" Tắt CapsLock  -> ẩn kết quả")
         print(f" Kiểm tra mỗi: {self.trigger.poll_interval:.2f}s")
-        print(" Chạy ngầm: dùng Stop_StealthHelper.vbs để thoát | Chạy console: Ctrl+C")
+        print(" Chạy ngầm: dùng Stop_SessionAssistant.vbs để thoát | Chạy console: Ctrl+C")
         print("=" * 60, flush=True)
 
         state = self.trigger.is_on()

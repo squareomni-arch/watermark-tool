@@ -1,10 +1,10 @@
 @echo off
 setlocal EnableExtensions
 set "APP_DIR=%~dp0"
-set "PID_FILE=%APP_DIR%data\stealth_helper.pid"
+set "PID_FILE=%APP_DIR%data\session_assistant.pid"
 
 if not exist "%PID_FILE%" (
-    echo Khong tim thay Stealth Helper dang chay.
+    echo Khong tim thay Session Assistant dang chay.
     pause
     exit /b 0
 )
@@ -19,7 +19,7 @@ if errorlevel 1 (
 )
 
 del "%PID_FILE%" >nul 2>&1
-echo Da dung Stealth Helper.
+echo Da dung Session Assistant.
 pause
 endlocal
 exit /b 0

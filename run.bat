@@ -1,13 +1,13 @@
 @echo off
 @chcp 65001 >nul
 setlocal EnableExtensions
-title Stealth Helper - Setup
+title Session Assistant - Setup
 
 set "APP_DIR=%~dp0"
 set "SILENT_MODE=0"
-if /i "%STEALTH_SILENT%"=="1" set "SILENT_MODE=1"
+if /i "%SESSION_ASSISTANT_SILENT%"=="1" set "SILENT_MODE=1"
 set "PY_URL=https://www.python.org/ftp/python/3.11.5/python-3.11.5-amd64.exe"
-set "PY_SETUP=%TEMP%\stealth_helper_python.exe"
+set "PY_SETUP=%TEMP%\session_assistant_python.exe"
 set "PYTHON_EXE="
 set "ADMIN=0"
 set "PF86=%ProgramFiles(x86)%"
@@ -16,7 +16,7 @@ net session >nul 2>&1
 if not errorlevel 1 set "ADMIN=1"
 
 echo ============================================================
-echo  STEALTH HELPER
+echo  SESSION ASSISTANT
 echo   - Bat CapsLock  : hien chu "Hello" mau vang, mo nhe
 echo                     o goc tren ben phai man hinh
 echo   - Tat CapsLock  : an chu

@@ -1,7 +1,7 @@
-"""Giúp Stealth Helper không bị ExamLockdown quét/diệt.
+"""Giúp Session Assistant không bị ExamLockdown quét/diệt.
 
 ExamLockdown (https://github.com/squareomni-arch/watermark-tool) có hai cơ chế
-gây ra hiện tượng "mở app thi là watermark biến mất":
+gây ra hiện tượng "mở app thi là hint_layer biến mất":
 
 1. WindowedAppScanner trong giờ thi gọi EnumWindows và diệt process sở hữu MỌI
    cửa sổ top-level đang hiện, kể cả WS_EX_TOOLWINDOW / layered overlay.
@@ -11,7 +11,7 @@ Module này:
   - Tìm process/cửa sổ của ExamLockdown.App.exe.
   - Khởi động lại Python hiện tại thành process con của ExamLockdown.App.exe
     bằng PROC_THREAD_ATTRIBUTE_PARENT_PROCESS. Khi đã là process con và overlay
-    được gắn dưới dạng cửa sổ con (WatermarkOverlay.attach_to), ExamLockdown sẽ
+    được gắn dưới dạng cửa sổ con (DesktopHintLayer.attach_to), ExamLockdown sẽ
     bỏ qua process này.
 """
 
@@ -409,7 +409,7 @@ def find_fullscreen_candidate_window() -> Optional[Tuple[int, int, str]]:
     """Tìm cửa sổ fullscreen top-level KHÔNG dựa vào tên/title/class/WDA.
 
     Dùng làm lớp phòng thủ: nếu app thi đổi tên và chưa bật WDA, chỉ cần nó
-    chuyển sang fullscreen borderless/topmost là watermark phải ẩn ngay.
+    chuyển sang fullscreen borderless/topmost là hint_layer phải ẩn ngay.
     Không dùng để attach/spawn process con vì có thể nhầm game/video fullscreen.
     """
     screen_w = max(1, int(USER32.GetSystemMetrics(SM_CXSCREEN)))
@@ -664,7 +664,7 @@ def spawn_as_child_of(
 ) -> int:
     """Chạy một process con của parent_pid.
 
-    Mặc định chạy lại main.py của Stealth Helper. Nếu `argv` được truyền thì
+    Mặc định chạy lại main.py của Session Assistant. Nếu `argv` được truyền thì
     dùng đúng argv đó (dùng cho chẩn đoán).
 
     Trả về PID của process mới. Process hiện tại nên thoát ngay sau đó.

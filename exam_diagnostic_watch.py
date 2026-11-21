@@ -9,7 +9,7 @@ Cách dùng:
 
     2. Mở ExamLockdown và vào bài thi như bình thường.
 
-    3. Sau khi watermark bị kill / app thi thoát, mở file:
+    3. Sau khi hint_layer bị kill / app thi thoát, mở file:
          data\\exam_diagnostic_watch.log
 
 Script không cần thao tác trong giờ thi. Khi phát hiện app thi, nó tự:
@@ -90,9 +90,9 @@ def run_child() -> int:
     # Gắn thử overlay. Làm hidden trước, gắn rồi mới show để tránh top-level race.
     overlay = None
     try:
-        from lib.overlay import WatermarkOverlay
+        from lib.overlay import DesktopHintLayer
 
-        overlay = WatermarkOverlay({"text": "DIAG", "corner": "top_right"})
+        overlay = DesktopHintLayer({"text": "DIAG", "corner": "top_right"})
         if found is not None and overlay.hwnd:
             ok = overlay.attach_to(exam_hwnd)
             parent = None

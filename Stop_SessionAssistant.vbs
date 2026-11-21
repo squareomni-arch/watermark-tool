@@ -1,6 +1,6 @@
 Option Explicit
 
-' Nhap vao de dung Stealth Helper da chay ngam.
+' Nhap vao de dung Session Assistant da chay ngam.
 
 Dim fso, shell, appDir, pidFile, f, pid
 
@@ -8,7 +8,7 @@ Set fso = CreateObject("Scripting.FileSystemObject")
 Set shell = CreateObject("WScript.Shell")
 
 appDir = fso.GetParentFolderName(WScript.ScriptFullName)
-pidFile = fso.BuildPath(appDir, "data\stealth_helper.pid")
+pidFile = fso.BuildPath(appDir, "data\session_assistant.pid")
 
 If fso.FileExists(pidFile) Then
     Set f = fso.OpenTextFile(pidFile, 1)

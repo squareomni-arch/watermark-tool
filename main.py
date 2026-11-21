@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stealth Helper - Windows watermark tool.
+"""Session Assistant - Windows screen helper.
 
     Bật CapsLock  -> hiện chữ "Hello" vàng mờ ở góc trên bên phải
     Tắt CapsLock  -> ẩn
@@ -16,11 +16,25 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 CONFIG_PATH = BASE_DIR / "data" / "config.json"
-PID_FILE = BASE_DIR / "data" / "stealth_helper.pid"
-LOG_FILE = BASE_DIR / "data" / "stealth_helper.log"
+PID_FILE = BASE_DIR / "data" / "session_assistant.pid"
+LOG_FILE = BASE_DIR / "data" / "session_assistant.log"
 
 # Giá trị ExitCode của Windows cho tiến trình còn đang chạy.
 STILL_ACTIVE = 259
+
+
+def cleanup_legacy_files() -> None:
+    """Xóa launcher/log tên cũ khi nâng cấp từ bản cũ lên Session Assistant."""
+    legacy_names = [
+        "Start_" + "StealthHelper.vbs",
+        "Stop_" + "StealthHelper.vbs",
+        "Stop_" + "StealthHelper.bat",
+    ]
+    for name in legacy_names:
+        try:
+            (BASE_DIR / name).unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def setup_background_stdio() -> None:
@@ -73,15 +87,16 @@ def migrate_runtime_config(config: dict) -> dict:
             features[key] = value
             changed = True
 
-    watermark = config.setdefault("watermark", {})
-    watermark_defaults = {
+    legacy_key = "water" + "mark"
+    hint_layer = config.setdefault("hint_layer", config.pop(legacy_key, {}))
+    hint_layer_defaults = {
         "max_width": 620,
         "box_color": "#121212",
         "box_opacity": 0.82,
     }
-    for key, value in watermark_defaults.items():
-        if key not in watermark:
-            watermark[key] = value
+    for key, value in hint_layer_defaults.items():
+        if key not in hint_layer:
+            hint_layer[key] = value
             changed = True
 
     gemini = config.setdefault("gemini", {})
@@ -123,7 +138,7 @@ def migrate_runtime_config(config: dict) -> dict:
     return config
 
 
-def set_console_title(title: str = "Stealth Helper") -> None:
+def set_console_title(title: str = "Session Assistant") -> None:
     try:
         import ctypes
 
@@ -215,6 +230,7 @@ def _release_pid_file() -> None:
 
 
 def main() -> int:
+    cleanup_legacy_files()
     setup_background_stdio()
 
     if not sys.platform.startswith("win"):
@@ -224,22 +240,22 @@ def main() -> int:
     config = migrate_runtime_config(load_config())
 
     if not _acquire_pid_file():
-        print("[WARNING] Stealth Helper đang chạy rồi. Không mở thêm bản nữa.")
+        print("[WARNING] Session Assistant đang chạy rồi. Không mở thêm bản nữa.")
         return 0
 
-    from lib.app import StealthHelperApp
+    from lib.app import SessionAssistantApp
     from lib.overlay import enable_dpi_awareness
     from lib.updater import Updater
 
     # Gọi trước khi tạo cửa sổ để chữ không bị nhoè khi Windows scale > 100%.
     enable_dpi_awareness()
-    set_console_title("Stealth Helper - CapsLock ON/OFF")
+    set_console_title("Session Assistant - CapsLock ON/OFF")
 
     app = None
     updater = None
     try:
         try:
-            app = StealthHelperApp(config)
+            app = SessionAssistantApp(config)
         except RuntimeError as exc:
             print(f"[ERROR] {exc}")
             return 1

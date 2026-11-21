@@ -1,6 +1,6 @@
 # Cài cầu nối SSH để Mac debug máy Windows qua cùng mạng LAN.
 # Chạy bằng quyền Administrator:
-#   powershell -NoProfile -ExecutionPolicy Bypass -File debug_bridge_setup.ps1 -AppDir "C:\path\to\watermark-tool"
+#   powershell -NoProfile -ExecutionPolicy Bypass -File debug_bridge_setup.ps1 -AppDir "C:\path\to\session-assistant"
 param(
     [string]$AppDir = ""
 )

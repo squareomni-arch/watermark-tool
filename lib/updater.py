@@ -1,17 +1,17 @@
-"""Bộ kiểm tra và cài cập nhật cho Stealth Helper.
+"""Bộ kiểm tra và cài cập nhật cho Session Assistant.
 
 Cách hoạt động:
     1. Định kỳ tải file JSON điều khiển từ `update.check_url` trong config.
     2. Nếu version trên server mới hơn version cục bộ -> hiện popup Windows.
     3. Người dùng đồng ý -> tải file zip, giải nén đè lên thư mục app
        (KHÔNG ghi đè `data/config.json` để giữ API key của người dùng).
-    4. Khởi động lại app bằng `Start_StealthHelper.vbs`.
+    4. Khởi động lại app bằng `Start_SessionAssistant.vbs`.
 
 File version cục bộ: `data/version.json`.
 File điều khiển trên server có dạng:
     {
         "version": "1.0.1",
-        "download_url": "https://.../watermark-tool-1.0.1.zip",
+        "download_url": "https://.../session-assistant-1.0.1.zip",
         "notes": "Mô tả bản mới"
     }
 """
@@ -40,13 +40,13 @@ _IS_WINDOWS = sys.platform.startswith("win")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 LOCAL_VERSION_FILE = BASE_DIR / "data" / "version.json"
-PID_FILE = BASE_DIR / "data" / "stealth_helper.pid"
+PID_FILE = BASE_DIR / "data" / "session_assistant.pid"
 
 # Những file KHÔNG được đè khi cập nhật (để không mất API key / trạng thái app).
 PROTECTED_RELATIVE_PATHS = {
     "data/config.json",
-    "data/stealth_helper.pid",
-    "data/stealth_helper.log",
+    "data/session_assistant.pid",
+    "data/session_assistant.log",
     ".DS_Store",
 }
 
@@ -169,7 +169,7 @@ class Updater:
             return
 
         self._thread = threading.Thread(
-            target=self._run, name="stealth-updater", daemon=True
+            target=self._run, name="session-assistant-updater", daemon=True
         )
         self._thread.start()
 
@@ -218,7 +218,7 @@ class Updater:
             try:
                 request = urllib.request.Request(
                     url,
-                    headers={"User-Agent": "StealthHelper-Updater/1.0"},
+                    headers={"User-Agent": "SessionAssistant-Updater/1.0"},
                 )
                 with urlopen(request, timeout=15) as response:
                     data = json.loads(response.read().decode("utf-8"))
@@ -244,7 +244,7 @@ class Updater:
             try:
                 request = urllib.request.Request(
                     api_url,
-                    headers={"User-Agent": "StealthHelper-Updater/1.0"},
+                    headers={"User-Agent": "SessionAssistant-Updater/1.0"},
                 )
                 with urlopen(request, timeout=15) as response:
                     data = json.loads(response.read().decode("utf-8"))
@@ -336,22 +336,22 @@ class Updater:
             f"{info.notes or 'Không có mô tả.'}\n\n"
             "Bạn có muốn cập nhật ngay không?"
         )
-        if not _message_box("Stealth Helper - Cập nhật", text):
+        if not _message_box("Session Assistant - Cập nhật", text):
             return
 
         ok, message = self.apply_update(info)
         if ok:
-            _info_box("Stealth Helper - Cập nhật", "Cập nhật xong. App sẽ khởi động lại.")
+            _info_box("Session Assistant - Cập nhật", "Cập nhật xong. App sẽ khởi động lại.")
             self._relaunch_app()
         else:
-            _info_box("Stealth Helper - Cập nhật", f"Cập nhật thất bại.\n{message}")
+            _info_box("Session Assistant - Cập nhật", f"Cập nhật thất bại.\n{message}")
 
     def apply_update(self, info: UpdateInfo) -> tuple:
         """Tải và giải nén bản cập nhật. Trả về (thành_công, thông_báo)."""
         if not info.download_url:
             return False, "Server không cung cấp link tải bản mới."
 
-        tmp_dir = Path(tempfile.mkdtemp(prefix="stealth_helper_update_"))
+        tmp_dir = Path(tempfile.mkdtemp(prefix="session_assistant_update_"))
         zip_path = tmp_dir / "update.zip"
         extracted_dir = tmp_dir / "extracted"
 
@@ -372,7 +372,7 @@ class Updater:
     def _download(self, url: str, destination: Path) -> None:
         request = urllib.request.Request(
             url,
-            headers={"User-Agent": "StealthHelper-Updater/1.0"},
+            headers={"User-Agent": "SessionAssistant-Updater/1.0"},
         )
         with urlopen(request, timeout=120) as response:
             with open(destination, "wb") as handle:
@@ -401,7 +401,7 @@ class Updater:
     def _relaunch_app(self) -> None:
         _release_pid_file_if_owner()
 
-        vbs_launcher = BASE_DIR / "Start_StealthHelper.vbs"
+        vbs_launcher = BASE_DIR / "Start_SessionAssistant.vbs"
         if _IS_WINDOWS and vbs_launcher.exists():
             try:
                 subprocess.Popen(["wscript.exe", str(vbs_launcher)])

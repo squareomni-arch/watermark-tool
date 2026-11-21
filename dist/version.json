@@ -1,5 +1,5 @@
 {
-  "version": "1.1.59",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.59/watermark-tool-1.1.59.zip",
-  "notes": "Chống ExamLockdown big update: PrintWindow trước, không attach preflight, chỉ WDA/fullscreen kiosk"
+  "version": "1.1.60",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.60/session-assistant-1.1.60.zip",
+  "notes": "Refactor ten tool thanh Session Assistant va lop DesktopHintLayer; xoa launcher Stealth/watermark cu"
 }

@@ -1,1 +1,1 @@
-"""Các module của Stealth Helper."""
+"""Các module của Session Assistant."""

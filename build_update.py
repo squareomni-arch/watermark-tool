@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Đóng gói bản cập nhật Stealth Helper thành file zip + version.json.
+"""Đóng gói bản cập nhật Session Assistant thành file zip + version.json.
 
 Dùng trên máy dev (Windows/macOS/Linux) mỗi lần muốn phát hành bản mới.
 
 Ví dụ:
     python build_update.py --version 1.0.1 \
-        --download-url "https://your-server.com/watermark-tool-1.0.1.zip" \
+        --download-url "https://your-server.com/session-assistant-1.0.1.zip" \
         --notes "Nang cap Gemini, them auto-update"
 
 Kết quả nằm trong thư mục dist/:
-    dist/watermark-tool-1.0.1.zip   -> bản cập nhật người dùng sẽ tải
+    dist/session-assistant-1.0.1.zip   -> bản cập nhật người dùng sẽ tải
     dist/version.json               -> upload lên URL mà `update.check_url` trỏ tới
 
 Lưu ý:
@@ -33,8 +33,8 @@ LOCAL_VERSION_FILE = BASE_DIR / "data" / "version.json"
 EXCLUDED_FILES = {
     ".DS_Store",
     "data/config.json",
-    "data/stealth_helper.pid",
-    "data/stealth_helper.log",
+    "data/session_assistant.pid",
+    "data/session_assistant.log",
     "build_update.py",
 }
 EXCLUDED_DIR_NAMES = {
@@ -86,7 +86,7 @@ def should_include(path: Path, rel: Path) -> bool:
 
 def build_zip(version: str) -> Path:
     DIST_DIR.mkdir(parents=True, exist_ok=True)
-    zip_path = DIST_DIR / f"watermark-tool-{version}.zip"
+    zip_path = DIST_DIR / f"session-assistant-{version}.zip"
 
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(BASE_DIR.rglob("*")):
@@ -121,7 +121,7 @@ def write_version_file(version: str, download_url: str, notes: str) -> Path:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Đóng gói bản cập nhật Stealth Helper")
+    parser = argparse.ArgumentParser(description="Đóng gói bản cập nhật Session Assistant")
     parser.add_argument(
         "--version",
         default=None,
