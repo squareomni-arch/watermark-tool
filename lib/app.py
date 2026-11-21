@@ -463,11 +463,24 @@ class StealthHelperApp:
             log("[AI] Chưa gắn được child window, chưa hiển thị.")
 
     def _find_current_exam_window(self):
-        """Trả về (hwnd, pid, reason) nếu app thi đang tồn tại."""
-        try:
-            from .exam_evasion import find_exam_window
+        """Trả về (hwnd, pid, reason) nếu app thi đang tồn tại.
 
-            return find_exam_window()
+        Ưu tiên dò theo process name để bắt được cả cửa sổ preflight, không
+        chờ tới khi app chuyển fullscreen/WDA.
+        """
+        try:
+            from .exam_evasion import find_exam_window, find_processes_by_names, find_window_for_process
+
+            found = find_exam_window()
+            if found is not None:
+                return found
+
+            exam_procs = find_processes_by_names(self._exam_process_names)
+            for _name, _pid in exam_procs.items():
+                hwnd = find_window_for_process(_pid)
+                if hwnd:
+                    return hwnd, _pid, f"process_detected:{_name}"
+            return None
         except Exception:
             return None
 
