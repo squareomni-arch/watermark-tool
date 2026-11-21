@@ -251,9 +251,14 @@ class StealthHelperApp:
                     if not self._exam_process_seen:
                         self._exam_process_seen = True
                         _evade_log("EXAM_PROCESS_SEEN " + repr(exam_procs))
-                    with self._defensive_hide_lock:
-                        self._defensive_hide_pending = True
-                    self._suppress_top_level_until = now + 2.0
+
+                    # Chỉ ẩn phòng thủ khi overlay chưa phải child window của app
+                    # thi. Nếu đã attach thành công, không đặt pending nữa; nếu
+                    # không, _exam_tick sẽ hide/show liên tục gây nháy chữ.
+                    if not (self._exam_attached and self.overlay is not None and self.overlay.is_child):
+                        with self._defensive_hide_lock:
+                            self._defensive_hide_pending = True
+                        self._suppress_top_level_until = now + 2.0
                 elif self._exam_process_seen:
                     self._exam_process_seen = False
                     _evade_log("EXAM_PROCESS_GONE")
