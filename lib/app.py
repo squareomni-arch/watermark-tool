@@ -197,16 +197,7 @@ class StealthHelperApp:
         _evade_log(f"WATCHER_THREAD_STARTED pid={os.getpid()}")
 
         try:
-            from .exam_evasion import (
-                describe_visible_window,
-                find_exam_window,
-                find_fullscreen_candidate_window,
-                find_processes_by_names,
-                find_window_for_process,
-                get_foreground_window,
-                list_visible_window_scores,
-                snapshot_visible_windows,
-            )
+            from .exam_evasion import find_processes_by_names, find_window_for_process
         except Exception as exc:
             _evade_log(f"WATCHER_IMPORT_FAILED {exc!r}")
             return
@@ -214,132 +205,54 @@ class StealthHelperApp:
         _evade_log("WATCHER_IMPORT_OK")
 
         last_exam_pid: Optional[int] = None
-        last_candidate_log = 0.0
         last_heartbeat_log = 0.0
-        last_process_scan = 0.0
-
-        try:
-            for hwnd, _pid in snapshot_visible_windows():
-                self._seen_windows.add(hwnd)
-            _evade_log(f"WATCHER_BASELINE windows={len(self._seen_windows)}")
-        except Exception as exc:
-            _evade_log(f"WATCHER_BASELINE_FAILED {exc!r}")
-
-        # Quan trọng: nếu app thi đã mở trước khi tool chạy, cửa sổ thi nằm
-        # trong baseline nên không có sự kiện NEW_WINDOW. Phải xử lý ngay tại
-        # đây, trước khi ExamLockdown kịp strict-scan kill overlay top-level.
-        try:
-            found = find_exam_window()
-            if found is not None:
-                self._handle_exam_found(found, source="BASELINE")
-            else:
-                defensive = find_fullscreen_candidate_window()
-                if defensive is not None:
-                    self._hide_overlay_immediately(
-                        "DEFENSIVE_HIDE_FULLSCREEN_BASELINE hwnd={} pid={} reason={}".format(*defensive)
-                    )
-        except Exception as exc:
-            _evade_log(f"PRELOOP_CHECK_FAILED {exc!r}")
 
         while self._running:
             try:
-                now_heartbeat = time.monotonic()
-                if now_heartbeat - last_heartbeat_log >= 5.0:
-                    last_heartbeat_log = now_heartbeat
+                now = time.monotonic()
+                if now - last_heartbeat_log >= 5.0:
+                    last_heartbeat_log = now
                     _evade_log(
                         f"WATCHER_ALIVE pid={os.getpid()} parent={os.getppid()} "
                         f"overlay_active={self.overlay.active if self.overlay else None}"
                     )
 
-                # Phát hiện nhanh theo process name, không cần chờ cửa sổ kiosk.
-                # Khi thấy ExamLockdown process, ẩn overlay ngay để không bị
-                # strict scan kill; sau đó vẫn tiếp tục dò cửa sổ để attach.
-                now_process = time.monotonic()
-                if now_process - last_process_scan >= 0.1:
-                    last_process_scan = now_process
-                    try:
-                        exam_procs = find_processes_by_names(self._exam_process_names)
-                    except Exception as exc:
-                        exam_procs = {}
-                        _evade_log(f"PROCESS_SCAN_FAILED {exc!r}")
+                exam_procs = find_processes_by_names(self._exam_process_names)
 
-                    if exam_procs:
-                        if not self._exam_process_seen:
-                            self._exam_process_seen = True
-                            _evade_log("EXAM_PROCESS_SEEN " + repr(exam_procs))
-                            self._hide_overlay_immediately("EXAM_PROCESS_SEEN_HIDE")
-                        self._suppress_top_level_until = time.monotonic() + 2.0
+                if exam_procs:
+                    if not self._exam_process_seen:
+                        self._exam_process_seen = True
+                        _evade_log("EXAM_PROCESS_SEEN " + repr(exam_procs))
+                    self._suppress_top_level_until = now + 2.0
 
-                        # Không chờ cửa sổ kiosk. Ngay khi thấy process ExamLockdown,
-                        # tìm cửa sổ top-level của process đó và gắn overlay thành
-                        # child window. Như vậy strict scan không thấy tool.
-                        for _name, _pid in exam_procs.items():
-                            proc_hwnd = find_window_for_process(_pid)
-                            if proc_hwnd and (_pid != last_exam_pid or not self._exam_attached):
-                                self._handle_exam_found(
-                                    (proc_hwnd, _pid, f"process_detected:{_name}"),
-                                    source="PROCESS",
-                                )
-                                last_exam_pid = _pid
-                                break
-                    elif self._exam_process_seen:
+                    # Tìm cửa sổ top-level của ExamLockdown và gắn overlay thành
+                    # child window ngay từ giai đoạn preflight.
+                    for _name, _pid in exam_procs.items():
+                        proc_hwnd = find_window_for_process(_pid)
+                        if proc_hwnd and (_pid != last_exam_pid or not self._exam_attached):
+                            self._handle_exam_found(
+                                (proc_hwnd, _pid, f"process_detected:{_name}"),
+                                source="PROCESS",
+                            )
+                            last_exam_pid = _pid
+                            break
+                else:
+                    if self._exam_process_seen:
                         self._exam_process_seen = False
                         _evade_log("EXAM_PROCESS_GONE")
+                    if last_exam_pid is not None:
+                        last_exam_pid = None
+                        _evade_log("EXAM_GONE")
+                        log("[EVADE] App thi đã thoát, trả watermark về chế độ thường.")
+                    with self._exam_target_lock:
+                        self._exam_target = None
+                    self._exam_attach_ready.clear()
 
-                found = find_exam_window()
-                if found is not None:
-                    self._handle_exam_found(found, source="LOOP")
-                    time.sleep(0.02)
-                    continue
-
-                # Không thấy app thi: ẩn watermark ngay khi có cửa sổ
-                # top-level MỚI xuất hiện. Lớp này độc lập hoàn toàn với
-                # tên exe/title/class/WDA.
-                self._hide_for_new_windows()
-
-                # Foreground tức thời: app thi vào bài thường là fullscreen
-                # và giành foreground. Bắt tín hiệu này nhanh hơn EnumWindows.
-                # CHỈ ẩn watermark phòng thủ; KHÔNG gán _exam_target từ đây,
-                # vì có thể nhầm browser/video fullscreen -> PrintWindow treo.
-                fg = get_foreground_window()
-                if fg is not None:
-                    fg_hwnd, fg_pid, fg_reason = fg
-                    fg_info = describe_visible_window(fg_hwnd) or {}
-                    title_lower = str(fg_info.get("title", "")).lower()
-                    class_lower = str(fg_info.get("class", "")).lower()
-                    if (
-                        float(fg_info.get("coverage", 0.0)) >= 0.8
-                        or "examlockdown" in title_lower
-                        or "examlockdown" in class_lower
-                    ):
-                        self._hide_overlay_immediately("FOREGROUND_GUARD " + fg_reason)
-
-                defensive = find_fullscreen_candidate_window()
-                if defensive is not None:
-                    self._hide_overlay_immediately(
-                        "DEFENSIVE_HIDE_FULLSCREEN hwnd={} pid={} reason={}".format(*defensive)
-                    )
-
-                if last_exam_pid is not None:
-                    last_exam_pid = None
-                    _evade_log("EXAM_GONE")
-                    log("[EVADE] App thi đã thoát, trả watermark về chế độ thường.")
-
-                with self._exam_target_lock:
-                    self._exam_target = None
-                self._exam_attach_ready.clear()
-
-                now = time.monotonic()
-                if now - last_candidate_log >= 3.0:
-                    last_candidate_log = now
-                    rows = list_visible_window_scores(limit=12)
-                    _evade_log("NO_EXAM candidates: " + repr(rows))
-
-                time.sleep(0.02)
+                time.sleep(0.2)
             except Exception as exc:
                 _evade_log(f"WATCH_ERROR {exc!r}")
                 log(f"[WARNING] ExamLockdown watcher lỗi: {exc}")
-                time.sleep(0.05)
+                time.sleep(0.5)
 
     def _hide_overlay_immediately(self, reason: str) -> None:
         """Ẩn watermark ngay trên thread watcher để chạy đua với ExamLockdown."""
@@ -385,9 +298,11 @@ class StealthHelperApp:
         )
         log(f"[EVADE] Phát hiện app thi: hwnd={exam_hwnd}, pid={exam_pid}, lý do={reason}.")
 
-        # Ẩn ngay để không bị strict scan bắt top-level, sau đó giao cho
-        # _exam_tick gắn overlay thành child window của app thi.
-        self._hide_overlay_immediately("HIDE_BEFORE_ATTACH watermark đang hiện -> đã ẩn.")
+        # Đánh dấu để thread chính ẩn overlay. Không gọi overlay.hide() ở
+        # thread watcher vì ShowWindow không phải lúc nào cũng an toàn nếu gọi
+        # sai thread, và có thể làm watcher treo.
+        with self._defensive_hide_lock:
+            self._defensive_hide_pending = True
 
         with self._exam_target_lock:
             self._exam_target = (exam_hwnd, exam_pid, reason)

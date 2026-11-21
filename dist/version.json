@@ -1,5 +1,5 @@
 {
-  "version": "1.1.45",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.45/watermark-tool-1.1.45.zip",
-  "notes": "Coi child attach thanh cong khi GetParent khop, giam log EXAM_TICK spam"
+  "version": "1.1.46",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.46/watermark-tool-1.1.46.zip",
+  "notes": "Simplify watcher: chi scan process, khong EnumWindows lien tuc gay treo; attach preflight som"
 }
