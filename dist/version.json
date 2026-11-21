@@ -1,5 +1,5 @@
 {
-  "version": "1.1.52",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.52/watermark-tool-1.1.52.zip",
-  "notes": "Remove EnumWindows/behavior scan khoi watcher de khong treo; chi attach khi cua so ExamLockdown da WDA"
+  "version": "1.1.53",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.53/watermark-tool-1.1.53.zip",
+  "notes": "Khong goi overlay.hide o watcher thread; chi set pending de main thread an, tranh hang"
 }
