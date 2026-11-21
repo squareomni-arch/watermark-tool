@@ -417,15 +417,17 @@ class GeminiHelper:
         if not self.available:
             return None
 
-        # Chỉ dùng đúng model Gemini đã cấu hình. Không thử model khác,
-        # không thử cơ chế capture/API thay thế.
-        for attempt in range(1, self.retries_per_model + 1):
+        # Chỉ dùng đúng model Gemini đã cấu hình. Không thử model khác.
+        # Với 429/503 do Gemini quá tải, thử lại đúng model đó vài lần.
+        attempts = max(3, self.retries_per_model)
+        for attempt in range(1, attempts + 1):
             answer = self._generate_with_model(self.model, image_b64, detailed)
             if answer is not None:
                 return answer
-            if attempt < self.retries_per_model:
-                print(f"[AI] Gemini '{self.model}' lần {attempt} không được, thử lại...")
-                time.sleep(0.6)
+            if attempt < attempts:
+                wait = min(3.0, 0.8 * attempt)
+                print(f"[AI] Gemini '{self.model}' lần {attempt} không được, thử lại sau {wait:.1f}s...")
+                time.sleep(wait)
 
         print(f"[AI] Gemini '{self.model}' không trả được kết quả.")
         return None

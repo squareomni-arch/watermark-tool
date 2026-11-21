@@ -91,6 +91,8 @@ class StealthHelperApp:
         }
         self._exam_process_seen = False
         self._suppress_top_level_until = 0.0
+        self._last_defensive_log = ""
+        self._last_defensive_log_at = 0.0
 
     # ------------------------------------------------------------------ chạy
     def start(self) -> None:
@@ -327,7 +329,13 @@ class StealthHelperApp:
         """Ẩn watermark ngay trên thread watcher để chạy đua với ExamLockdown."""
         if self.overlay is not None and self.overlay.active:
             self.overlay.hide()
-        _evade_log(reason)
+
+        # Tránh log spam hàng nghìn dòng giống nhau trong 1 giây.
+        now = time.monotonic()
+        if reason != self._last_defensive_log or now - self._last_defensive_log_at >= 1.0:
+            self._last_defensive_log = reason
+            self._last_defensive_log_at = now
+            _evade_log(reason)
 
     def _hide_for_new_windows(self) -> None:
         """Ẩn watermark nếu có cửa sổ top-level mới xuất hiện."""

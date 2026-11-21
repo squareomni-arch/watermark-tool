@@ -1,5 +1,5 @@
 {
-  "version": "1.1.41",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.41/watermark-tool-1.1.41.zip",
-  "notes": "Skip cai OpenSSH neu da co; them DISM fallback va huong dan khi dang cai"
+  "version": "1.1.42",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.42/watermark-tool-1.1.42.zip",
+  "notes": "Loai false-positive fullscreen; chi nhan WPF/WDA. Giam log spam. Retry 429/503 cung model Gemini."
 }

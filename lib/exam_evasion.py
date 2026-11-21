@@ -373,8 +373,16 @@ def find_fullscreen_candidate_window() -> Optional[Tuple[int, int, str]]:
     best: Optional[Tuple[int, int, str]] = None
     best_area = 0
 
-    # Shell desktop/taskbar phủ fullscreen nhưng không phải app thi.
-    ignored_classes = {"progman", "workerw", "shell_traywnd", "dv2controlhost", "edgeuiinputtopwndclass"}
+    # Chỉ coi là fullscreen candidate nếu rất giống kiosk WPF:
+    #  - class HwndWrapper[...] (WPF), hoặc
+    #  - cửa sổ đang bật WDA_EXCLUDEFROMCAPTURE.
+    # Không dùng generic fullscreen vì Settings, Windows Input Experience,
+    # browser/video fullscreen đều phủ 100% và gây false-positive.
+    ignored_classes = {
+        "progman", "workerw", "shell_traywnd", "dv2controlhost",
+        "edgeuiinputtopwndclass", "windows.ui.core.corewindow",
+        "applicationframeWindow", "chrome_widgetwin_1",
+    }
 
     @WNDENUMPROC
     def _enum(hwnd, _lparam):
@@ -392,7 +400,8 @@ def find_fullscreen_candidate_window() -> Optional[Tuple[int, int, str]]:
 
         class_buf = ctypes.create_unicode_buffer(256)
         USER32.GetClassNameW(hwnd, class_buf, len(class_buf))
-        if class_buf.value.lower() in ignored_classes:
+        class_name = class_buf.value.lower()
+        if class_name in ignored_classes:
             return True
 
         style = int(USER32.GetWindowLongPtrW(hwnd, GWL_STYLE))
@@ -403,7 +412,15 @@ def find_fullscreen_candidate_window() -> Optional[Tuple[int, int, str]]:
         coverage = (width * height) / screen_area
         if coverage < 0.80:
             return True
-        if not (exstyle & WS_EX_TOPMOST or style & WS_POPUP):
+
+        affinity = wintypes.DWORD()
+        has_wda = (
+            USER32.GetWindowDisplayAffinity(hwnd, ctypes.byref(affinity))
+            and int(affinity.value) == WDA_EXCLUDEFROMCAPTURE
+        )
+        is_wpf = class_name.startswith("hwndwrapper")
+
+        if not has_wda and not is_wpf:
             return True
 
         pid = wintypes.DWORD()
@@ -414,7 +431,7 @@ def find_fullscreen_candidate_window() -> Optional[Tuple[int, int, str]]:
             best = (
                 int(hwnd),
                 int(pid.value),
-                f"fullscreen:{coverage:.0%},topmost={bool(exstyle & WS_EX_TOPMOST)},popup={bool(style & WS_POPUP)}",
+                f"fullscreen:{coverage:.0%},wda={has_wda},wpf={is_wpf}",
             )
         return True
 
