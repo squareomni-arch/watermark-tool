@@ -245,6 +245,98 @@ class GeminiHelper:
         print("[CAPTURE] PrintWindow thành công.", flush=True)
         return image
 
+    def _get_window_rect_for_hwnd(self, hwnd: int) -> Optional[tuple]:
+        """Trả về (left, top, width, height) của một HWND."""
+        if not sys.platform.startswith("win") or not hwnd:
+            return None
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class RECT(ctypes.Structure):
+                _fields_ = [
+                    ("left", ctypes.c_int32),
+                    ("top", ctypes.c_int32),
+                    ("right", ctypes.c_int32),
+                    ("bottom", ctypes.c_int32),
+                ]
+
+            user32 = ctypes.WinDLL("user32", use_last_error=True)
+            user32.GetWindowRect.restype = wintypes.BOOL
+            user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(RECT)]
+            rect = RECT()
+            if not user32.GetWindowRect(wintypes.HWND(hwnd), ctypes.byref(rect)):
+                return None
+            width = int(rect.right - rect.left)
+            height = int(rect.bottom - rect.top)
+            if width <= 0 or height <= 0:
+                return None
+            return int(rect.left), int(rect.top), width, height
+        except Exception:
+            return None
+
+    def _capture_exam_region_safely(self, ImageGrab):
+        """Chụp vùng cửa sổ app thi bằng cách tạm gỡ WDA đúng HWND đó.
+
+        Luồng:
+            1. Tạm gọi SetWindowDisplayAffinity(hwnd, WDA_NONE) trong process
+               sở hữu cửa sổ.
+            2. Chụp đúng bbox của cửa sổ đó.
+            3. Bật lại WDA_EXCLUDEFROMCAPTURE ngay trong finally.
+
+        Không dùng EnumWindows/GetWindowText trong đường nóng, vì các hàm này
+        có thể treo khi gặp cửa sổ không phản hồi. Chỉ thao tác HWND đã biết.
+        """
+        hwnd = self._exam_capture_hwnd
+        if not hwnd:
+            return None
+
+        try:
+            from .wda_unlock import restore_window, unlock_window
+        except Exception as exc:
+            print(f"[CAPTURE] Không import wda_unlock: {exc!r}", flush=True)
+            return None
+
+        rect = self._get_window_rect_for_hwnd(hwnd)
+        if rect is None:
+            print("[CAPTURE] Không lấy được rect cửa sổ app thi.", flush=True)
+            return None
+
+        left, top, width, height = rect
+        bbox = (left, top, left + width, top + height)
+
+        print(
+            f"[CAPTURE] Tạm mở WDA cho hwnd={hwnd}, chụp bbox={bbox}...",
+            flush=True,
+        )
+        started = time.monotonic()
+
+        try:
+            unlock_window(hwnd)
+        except Exception as exc:
+            print(f"[CAPTURE] Không tạm mở WDA được: {exc!r}", flush=True)
+            return None
+
+        try:
+            image = ImageGrab.grab(bbox=bbox)
+            print(
+                f"[CAPTURE] Chụp xong sau {time.monotonic() - started:.3f}s.",
+                flush=True,
+            )
+            return image
+        except Exception as exc:
+            print(f"[CAPTURE] Lỗi chụp vùng app thi: {exc!r}", flush=True)
+            return None
+        finally:
+            try:
+                restore_window(hwnd)
+                print(
+                    f"[CAPTURE] Đã khôi phục WDA sau {time.monotonic() - started:.3f}s.",
+                    flush=True,
+                )
+            except Exception as exc:
+                print(f"[CAPTURE] Không khôi phục WDA được: {exc!r}", flush=True)
+
     def _capture_screen_as_jpeg_b64(self, detailed: bool = False) -> Optional[str]:
         """Chụp màn hình chính, nén nhỏ và trả về ảnh JPEG dạng base64.
 
@@ -267,11 +359,15 @@ class GeminiHelper:
         try:
             print("[CAPTURE] Bắt đầu chụp màn hình...", flush=True)
 
-            # Đơn giản và đáng tin cậy: chỉ dùng ImageGrab để chụp toàn màn hình,
-            # rồi gửi ảnh cho Gemini. Không gọi WDA/PrintWindow/process injection
-            # vì các đường đó có thể treo hoặc làm ảnh hưởng app thi.
-            image = ImageGrab.grab()
-            print("[CAPTURE] ImageGrab.grab() đã trả về.", flush=True)
+            # Nếu đang có cửa sổ app thi được xác định, thử chụp vùng cửa sổ đó
+            # sau khi tạm mở WDA trong thời gian cực ngắn rồi khôi phục ngay.
+            image = self._capture_exam_region_safely(ImageGrab)
+
+            if image is None:
+                # Trường hợp bình thường / không có app thi: chụp toàn màn hình.
+                print("[CAPTURE] Chụp toàn màn hình bằng ImageGrab...", flush=True)
+                image = ImageGrab.grab()
+                print("[CAPTURE] ImageGrab.grab() đã trả về.", flush=True)
 
             if image is None:
                 raise ScreenCaptureBlockedError(

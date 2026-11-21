@@ -1,5 +1,5 @@
 {
-  "version": "1.1.37",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.37/watermark-tool-1.1.37.zip",
-  "notes": "Bo WDA/PrintWindow/fallback model; chi ImageGrab + Gemini duy nhat. Loi se hien Loi doc man hinh"
+  "version": "1.1.38",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.38/watermark-tool-1.1.38.zip",
+  "notes": "Capture bbox app thi bang cach tam mo WDA dung HWND roi khoi phuc ngay, tranh EnumWindows treo"
 }

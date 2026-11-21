@@ -531,7 +531,9 @@ class StealthHelperApp:
                 _evade_log("ACTIVATE_BLOCKED_NO_CHILD_ATTACH")
                 log("[BẬT] CapsLock đang bật, nhưng chưa gắn được watermark vào app thi.")
                 return
-            self.overlay.show("Đang đọc màn hình...")
+            # Không hiện overlay lúc này để chữ "Đang đọc màn hình..." không
+            # lọt vào ảnh chụp gửi cho Gemini.
+            self.overlay.hide()
             log("[BẬT] CapsLock đang bật -> đang gọi Gemini đọc màn hình...")
             self._start_ai_worker()
             return
