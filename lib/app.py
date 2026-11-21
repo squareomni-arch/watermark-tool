@@ -103,6 +103,7 @@ class StealthHelperApp:
         self._last_exam_tick_log_at = 0.0
         self._last_handled_exam = None
         self._last_handled_exam_at = 0.0
+        self._attached_hwnd = None
 
     # ------------------------------------------------------------------ chạy
     def start(self) -> None:
@@ -354,12 +355,20 @@ class StealthHelperApp:
             if self.overlay.is_child and self.overlay.detach_from_parent():
                 self._exam_attached = False
                 self._exam_attach_ready.clear()
+                self._attached_hwnd = None
             self._process_pending_answer()
             return
 
         exam_hwnd, exam_pid, _reason = target
         if self.ai is not None:
             self.ai._exam_capture_hwnd = exam_hwnd
+
+        # Chỉ attach một lần cho mỗi cửa sổ app thi. Gọi SetParent/UpdateLayeredWindow
+        # mỗi tick có thể làm chậm vòng CapsLock, khiến tắt CapsLock không kịp
+        # phản hồi và text vẫn hiện.
+        if exam_hwnd == self._attached_hwnd and self._exam_attached and self.overlay.is_child:
+            self._process_pending_answer()
+            return
 
         ok = self.overlay.attach_to(exam_hwnd)
         parent = self._overlay_parent_hwnd()
@@ -375,6 +384,7 @@ class StealthHelperApp:
         if ok:
             self._exam_attached = True
             self._exam_attach_ready.set()
+            self._attached_hwnd = exam_hwnd
             # Nếu CapsLock đang bật nhưng lúc trước ta cố tình chưa show để tránh
             # top-level race, thì giờ đã an toàn để hiện watermark.
             if self.active and not self.overlay.active:
@@ -382,6 +392,7 @@ class StealthHelperApp:
         else:
             self._exam_attached = False
             self._exam_attach_ready.clear()
+            self._attached_hwnd = None
             if self.overlay.hwnd:
                 log("[EVADE] Không gắn được watermark vào cửa sổ app thi (SetParent thất bại).")
 

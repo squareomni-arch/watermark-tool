@@ -1,5 +1,5 @@
 {
-  "version": "1.1.57",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.57/watermark-tool-1.1.57.zip",
-  "notes": "Fix watermark nhay lien tuc khi da attach child window trong ExamLockdown"
+  "version": "1.1.58",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.58/watermark-tool-1.1.58.zip",
+  "notes": "Chi attach child window mot lan; giam SetParent moi tick de CapsLock tat an duoc ngay"
 }
