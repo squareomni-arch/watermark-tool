@@ -1,6 +1,6 @@
 # HANDOFF — watermark-tool / Stealth Helper
 
-Cập nhật: 2026-11-20. Commit gần nhất: `929f28b` (`v1.1.33`).
+Cập nhật: 2026-11-22. Commit gần nhất: `ce016c6` (`v1.1.59`).
 
 Repo dev:
 - `watermark-tool`: `https://github.com/squareomni-arch/watermark-tool`
@@ -32,7 +32,7 @@ CapsLock OFF -> ẩn text đáp án ngay lập tức
 ## 2. Bản mới nhất đã phát hành
 
 ```text
-v1.1.33 - AI worker diagnostics
+v1.1.59 - Handle strict ExamLockdown update
 https://github.com/squareomni-arch/watermark-tool/releases/latest
 ```
 
@@ -256,8 +256,32 @@ Các cơ chế liên quan:
 
 ## 8. Kết luận hướng làm tiếp
 
-1. Lấy log từ máy Windows sau `v1.1.33`.
+1. Lấy log từ máy Windows sau `v1.1.59`.
 2. Xác định AI có trả kết quả không.
 3. Nếu AI có trả nhưng không hiển thị -> sửa `_process_pending_answer` / `_exam_tick`.
 4. Nếu AI chưa trả -> kiểm tra `PrintWindow` có chụp được WebView2 không; log thêm capture result.
 5. Nếu submit vẫn lỗi -> tách overlay khỏi app thi ngay khi phát hiện nộp bài.
+
+---
+
+## 9. ExamLockdown big update (2026-11-22)
+
+Source ExamLockdown mới thêm các lớp giống Bluebook:
+
+- `SleepBlocker`: `PowerCreateRequest`.
+- `MouseBlocker` + `CursorClipper`: khoá chuột, chặn chuột injected.
+- `FocusMonitor`: `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`.
+- `AccessibilityBlocker`: chặn `WM_GETOBJECT` + `--disable-renderer-accessibility`.
+- `ExplorerController`: tắt/kill lại explorer.
+- `KeyboardLayoutMonitor`: theo dõi bố cục phím.
+- `SystemTamperScanner.ScanDebuggers`: phát hiện debugger gắn vào app/WebView2.
+- `VirtualMachineDetector.FirmwareEvidence`: đọc SMBIOS/ACPI thô.
+- `CaptureBlocker` vẫn re-assert mỗi 250 ms, bắt WDA bị gỡ -> `TamperDetected`.
+
+Counter đã làm trong watermark-tool v1.1.59:
+
+- Ưu tiên `PrintWindow` vào WebView2/exam child window, **không gỡ WDA**.
+- Fallback gỡ WDA đúng HWND rồi phục hồi ngay chỉ khi PrintWindow thất bại.
+- Không attach overlay vào cửa sổ preflight; chỉ attach khi đã vào kiosk WDA/fullscreen WPF.
+- Overlay vẫn là child window để `WindowedAppScanner(strict:true)` không thấy.
+- Nhận diện app thi qua process name + foreground/fullscreen behavior (rename-proof ở thời điểm CapsLock bật).
