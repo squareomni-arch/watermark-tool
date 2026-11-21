@@ -11,11 +11,26 @@ $PublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEnZzecGmdRoOrkVj3INKnAEzJH/nz
 
 Write-Host "=== CÀI OPENSSH SERVER ==="
 
-# Cài OpenSSH Server nếu chưa có.
-try {
-    Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 -ErrorAction SilentlyContinue | Out-Null
-} catch {
-    # Windows cũ hơn không hỗ trợ Add-WindowsCapability.
+$sshdExe = Join-Path $env:SystemRoot "System32\OpenSSH\sshd.exe"
+
+if (Test-Path $sshdExe) {
+    Write-Host "OpenSSH Server da co san: $sshdExe"
+} else {
+    Write-Host "Dang cai OpenSSH Server tu Windows Update..."
+    Write-Host "Buoc nay co the mat 1-5 phut. Vui long cho, KHONG tat cua so."
+    try {
+        Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 -ErrorAction Stop | Out-Null
+    } catch {
+        Write-Host "Loi khi cai bang Add-WindowsCapability: $_"
+        Write-Host "Thu cai bang DISM..."
+        & dism.exe /Online /Add-Capability /CapabilityName:OpenSSH.Server~~~~0.0.1.0
+    }
+}
+
+if (-not (Test-Path $sshdExe)) {
+    Write-Host "Chua cai duoc OpenSSH tu dong."
+    Write-Host "Mở Settings > Optional features > Add a feature > OpenSSH Server."
+    exit 1
 }
 
 Start-Service sshd -ErrorAction SilentlyContinue
@@ -72,4 +87,6 @@ Write-Host "Info file: $infoPath"
 Write-Host ""
 Write-Host "Bây giờ trên Mac có thể chạy:"
 Write-Host "  ssh -i ~/.ssh/watermark_debug $env:USERNAME@<IP>"
+Write-Host ""
+Write-Host "Neu script nay dang duoc goi tu Enable_SSH_Debug.bat, ban co the dong terminal."
 Write-Host ""

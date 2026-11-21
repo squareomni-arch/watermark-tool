@@ -1,5 +1,5 @@
 {
-  "version": "1.1.40",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.40/watermark-tool-1.1.40.zip",
-  "notes": "Them cau noi SSH de Mac tu dong doc log va chay lenh debug tren Windows cung LAN"
+  "version": "1.1.41",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.41/watermark-tool-1.1.41.zip",
+  "notes": "Skip cai OpenSSH neu da co; them DISM fallback va huong dan khi dang cai"
 }
