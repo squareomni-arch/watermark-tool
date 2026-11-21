@@ -85,6 +85,12 @@ class StealthHelperApp:
         self._ai_busy_lock = threading.Lock()
         self._pending_answer = _NO_ANSWER
         self._pending_answer_lock = threading.Lock()
+        self._exam_process_names = {
+            "examlockdown.app.exe",
+            "examlockdown.exe",
+        }
+        self._exam_process_seen = False
+        self._suppress_top_level_until = 0.0
 
     # ------------------------------------------------------------------ chạy
     def start(self) -> None:
@@ -191,6 +197,7 @@ class StealthHelperApp:
                 describe_visible_window,
                 find_exam_window,
                 find_fullscreen_candidate_window,
+                find_processes_by_names,
                 get_foreground_window,
                 list_visible_window_scores,
                 snapshot_visible_windows,
@@ -204,6 +211,7 @@ class StealthHelperApp:
         last_exam_pid: Optional[int] = None
         last_candidate_log = 0.0
         last_heartbeat_log = 0.0
+        last_process_scan = 0.0
 
         try:
             for hwnd, _pid in snapshot_visible_windows():
@@ -237,6 +245,28 @@ class StealthHelperApp:
                         f"WATCHER_ALIVE pid={os.getpid()} parent={os.getppid()} "
                         f"overlay_active={self.overlay.active if self.overlay else None}"
                     )
+
+                # Phát hiện nhanh theo process name, không cần chờ cửa sổ kiosk.
+                # Khi thấy ExamLockdown process, ẩn overlay ngay để không bị
+                # strict scan kill; sau đó vẫn tiếp tục dò cửa sổ để attach.
+                now_process = time.monotonic()
+                if now_process - last_process_scan >= 0.1:
+                    last_process_scan = now_process
+                    try:
+                        exam_procs = find_processes_by_names(self._exam_process_names)
+                    except Exception as exc:
+                        exam_procs = {}
+                        _evade_log(f"PROCESS_SCAN_FAILED {exc!r}")
+
+                    if exam_procs:
+                        if not self._exam_process_seen:
+                            self._exam_process_seen = True
+                            _evade_log("EXAM_PROCESS_SEEN " + repr(exam_procs))
+                            self._hide_overlay_immediately("EXAM_PROCESS_SEEN_HIDE")
+                        self._suppress_top_level_until = time.monotonic() + 2.0
+                    elif self._exam_process_seen:
+                        self._exam_process_seen = False
+                        _evade_log("EXAM_PROCESS_GONE")
 
                 found = find_exam_window()
                 if found is not None:
@@ -313,6 +343,7 @@ class StealthHelperApp:
                 info = describe_visible_window(hwnd)
                 _evade_log("NEW_WINDOW " + repr(info))
                 self._hide_overlay_immediately("DIRECT_HIDE_ON_NEW_WINDOW")
+                self._suppress_top_level_until = time.monotonic() + 2.0
                 return
         except Exception as exc:
             _evade_log(f"NEW_WINDOW_CHECK_FAILED {exc!r}")
@@ -456,10 +487,14 @@ class StealthHelperApp:
             log("[AI] CapsLock đã tắt, bỏ qua pending answer.")
             return
 
-        # Không có app thi -> hiển thị bình thường.
+        # Không có app thi -> hiển thị bình thường, nhưng không show nếu vừa
+        # thấy cửa sổ mới / process ExamLockdown xuất hiện.
         with self._exam_target_lock:
             target = self._exam_target
         if target is None:
+            if time.monotonic() < self._suppress_top_level_until:
+                log("[AI] Có cửa sổ/process mới đáng ngờ, hoãn hiển thị.")
+                return
             log("[AI] Không có app thi, hiển thị luôn.")
             self._show_answer(answer)
             return

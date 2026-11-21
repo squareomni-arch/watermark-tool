@@ -1,5 +1,5 @@
 {
-  "version": "1.1.38",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.38/watermark-tool-1.1.38.zip",
-  "notes": "Capture bbox app thi bang cach tam mo WDA dung HWND roi khoi phuc ngay, tranh EnumWindows treo"
+  "version": "1.1.39",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.39/watermark-tool-1.1.39.zip",
+  "notes": "Phat hien ExamLockdown bang process name de an overlay som; khong show lai top-level khi cua so/process moi xuat hien"
 }

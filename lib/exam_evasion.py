@@ -218,6 +218,34 @@ def find_process_by_name(process_name: str) -> Optional[int]:
         KERNEL32.CloseHandle(snapshot)
 
 
+def find_processes_by_names(names) -> Dict[str, int]:
+    """Trả về {tên exe thường: pid} của các process khớp danh sách cần tìm."""
+    wanted = {str(n).lower() for n in names}
+    result: Dict[str, int] = {}
+    if not wanted:
+        return result
+
+    snapshot = KERNEL32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if not snapshot:
+        return result
+
+    try:
+        entry = PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        if not KERNEL32.Process32FirstW(snapshot, ctypes.byref(entry)):
+            return result
+        while True:
+            name = entry.szExeFile.lower()
+            if name in wanted and name not in result:
+                result[name] = int(entry.th32ProcessID)
+            if not KERNEL32.Process32NextW(snapshot, ctypes.byref(entry)):
+                break
+    finally:
+        KERNEL32.CloseHandle(snapshot)
+
+    return result
+
+
 def describe_visible_window(hwnd: int) -> Optional[Dict]:
     """Đọc thông tin một cửa sổ top-level đang hiển thị."""
     if not USER32.IsWindowVisible(hwnd):
