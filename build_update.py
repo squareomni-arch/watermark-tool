@@ -142,8 +142,10 @@ def main() -> int:
     current = read_local_version()
     version = args.version or bump_patch(current)
 
-    zip_path = build_zip(version)
+    # Quan trọng: ghi version.json TRƯỚC rồi mới đóng zip, nếu không file
+    # data/version.json trong bản cập nhật vẫn mang version cũ.
     manifest_path = write_version_file(version, args.download_url, args.notes)
+    zip_path = build_zip(version)
 
     print("=" * 60)
     print("DA DONG GOI BAN CAP NHAT")
