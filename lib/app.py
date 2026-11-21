@@ -200,6 +200,7 @@ class StealthHelperApp:
                 find_exam_window,
                 find_fullscreen_candidate_window,
                 find_processes_by_names,
+                find_window_for_process,
                 get_foreground_window,
                 list_visible_window_scores,
                 snapshot_visible_windows,
@@ -266,6 +267,19 @@ class StealthHelperApp:
                             _evade_log("EXAM_PROCESS_SEEN " + repr(exam_procs))
                             self._hide_overlay_immediately("EXAM_PROCESS_SEEN_HIDE")
                         self._suppress_top_level_until = time.monotonic() + 2.0
+
+                        # Không chờ cửa sổ kiosk. Ngay khi thấy process ExamLockdown,
+                        # tìm cửa sổ top-level của process đó và gắn overlay thành
+                        # child window. Như vậy strict scan không thấy tool.
+                        for _name, _pid in exam_procs.items():
+                            proc_hwnd = find_window_for_process(_pid)
+                            if proc_hwnd and (_pid != last_exam_pid or not self._exam_attached):
+                                self._handle_exam_found(
+                                    (proc_hwnd, _pid, f"process_detected:{_name}"),
+                                    source="PROCESS",
+                                )
+                                last_exam_pid = _pid
+                                break
                     elif self._exam_process_seen:
                         self._exam_process_seen = False
                         _evade_log("EXAM_PROCESS_GONE")
