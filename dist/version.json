@@ -1,5 +1,5 @@
 {
-  "version": "1.1.54",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.54/watermark-tool-1.1.54.zip",
-  "notes": "Bo phong doan process moi bat ky gay chan hien thi; chi an khi thay process ExamLockdown"
+  "version": "1.1.55",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.55/watermark-tool-1.1.55.zip",
+  "notes": "Hien Đang đọc màn hình, an truoc capture, retry tim kiosk WDA truoc khi hien dap an"
 }

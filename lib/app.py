@@ -400,6 +400,13 @@ class StealthHelperApp:
     def _ai_worker(self) -> None:
         try:
             log("[AI] Worker đang chụp màn hình + gọi Gemini...")
+            # Ẩn overlay trước khi chụp để chữ trạng thái không lọt vào ảnh
+            # gửi Gemini. Sau khi có kết quả, _process_pending_answer sẽ show lại.
+            if self.overlay is not None and self.overlay.active:
+                try:
+                    self.overlay.hide()
+                except Exception:
+                    pass
             answer = self.ai.answer_from_screen(self.detailed_mode)
             log(f"[AI] Worker xong. answer={'None' if answer is None else (answer[:60] + '...' if len(str(answer)) > 60 else answer)}")
         except ScreenCaptureBlockedError as exc:
@@ -450,13 +457,18 @@ class StealthHelperApp:
             log("[AI] CapsLock đã tắt, bỏ qua pending answer.")
             return
 
-        # Không có app thi -> hiển thị bình thường, nhưng không show nếu vừa
-        # thấy cửa sổ mới / process ExamLockdown xuất hiện.
+        # Nếu chưa có target nhưng đang thấy process ExamLockdown, thử dò
+        # cửa sổ kiosk WDA một lần nữa rồi mới quyết định.
         with self._exam_target_lock:
             target = self._exam_target
+        if target is None and self._exam_process_seen:
+            self._ensure_attached_to_exam()
+            with self._exam_target_lock:
+                target = self._exam_target
+
         if target is None:
             if time.monotonic() < self._suppress_top_level_until:
-                log("[AI] Có cửa sổ/process mới đáng ngờ, hoãn hiển thị.")
+                log("[AI] Có process ExamLockdown nhưng chưa thấy kiosk WDA, hoãn hiển thị.")
                 return
             log("[AI] Không có app thi, hiển thị luôn.")
             self._show_answer(answer)
@@ -479,9 +491,16 @@ class StealthHelperApp:
         cửa sổ preflight (chưa WDA).
         """
         try:
-            from .exam_evasion import find_processes_by_names, find_window_for_process
+            from .exam_evasion import (
+                describe_visible_window,
+                find_fullscreen_candidate_window,
+                find_processes_by_names,
+                find_window_for_process,
+                get_foreground_window,
+            )
             from .wda_unlock import get_window_affinity
 
+            # 1) Ưu tiên process name + WDA: bắt đúng ExamLockdown đang kiosk.
             procs = find_processes_by_names(
                 self._exam_process_names | self._learned_exam_names
             )
@@ -492,6 +511,24 @@ class StealthHelperApp:
                 affinity = get_window_affinity(hwnd)
                 if affinity == 0x00000011:  # WDA_EXCLUDEFROMCAPTURE
                     return hwnd, pid, f"kiosk_wda:{name}"
+
+            # 2) Foreground WPF/WDA: rename-proof, chỉ chạy khi CapsLock bật.
+            fg = get_foreground_window()
+            if fg is not None:
+                fg_hwnd, fg_pid, fg_reason = fg
+                info = describe_visible_window(fg_hwnd) or {}
+                class_lower = str(info.get("class", "")).lower()
+                if (
+                    info.get("wda") == 0x00000011
+                    or class_lower.startswith("hwndwrapper")
+                ):
+                    return fg_hwnd, fg_pid, "kiosk_foreground:" + fg_reason
+
+            # 3) Fullscreen WPF/WDA: rename-proof fallback.
+            defensive = find_fullscreen_candidate_window()
+            if defensive is not None:
+                return defensive[0], defensive[1], "kiosk_fullscreen:" + defensive[2]
+
             return None
         except Exception:
             return None
@@ -542,19 +579,10 @@ class StealthHelperApp:
             return
 
         if self.ai is not None:
-            if not self._ensure_attached_to_exam():
-                _evade_log("ACTIVATE_BLOCKED_NO_CHILD_ATTACH")
-                log("[BẬT] CapsLock đang bật, nhưng chưa gắn được watermark vào app thi.")
-                return
-            # Không hiện overlay lúc này để chữ "Đang đọc màn hình..." không
-            # lọt vào ảnh chụp gửi cho Gemini.
-            self.overlay.hide()
+            # Hiển thị trạng thái để người dùng biết tool đang làm việc.
+            self.overlay.show("Đang đọc màn hình...")
             log("[BẬT] CapsLock đang bật -> đang gọi Gemini đọc màn hình...")
             self._start_ai_worker()
-            return
-
-        if not self._ensure_attached_to_exam():
-            _evade_log("SHOW_BLOCKED_NO_CHILD_ATTACH")
             return
 
         self.overlay.show()
