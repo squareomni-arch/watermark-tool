@@ -1,5 +1,5 @@
 {
-  "version": "1.1.36",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.36/watermark-tool-1.1.36.zip",
-  "notes": "Log tung buoc WDA va ImageGrab de tim diem treo triet de"
+  "version": "1.1.37",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.37/watermark-tool-1.1.37.zip",
+  "notes": "Bo WDA/PrintWindow/fallback model; chi ImageGrab + Gemini duy nhat. Loi se hien Loi doc man hinh"
 }

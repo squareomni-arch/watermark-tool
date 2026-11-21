@@ -266,55 +266,22 @@ class GeminiHelper:
 
         try:
             print("[CAPTURE] Bắt đầu chụp màn hình...", flush=True)
-            # Đường ưu tiên: chụp thẳng child window của app thi bằng
-            # PrintWindow. Không cần gỡ WDA -> không gây tamper.
-            image = self._try_capture_exam_content_without_wda()
-            if image is not None:
-                print("[CAPTURE] Dùng PrintWindow child window, không đụng WDA.", flush=True)
-            else:
-                print("[CAPTURE] PrintWindow không dùng được, fallback ImageGrab...", flush=True)
-                # Đường dự phòng: tạm gỡ WDA, chụp màn hình, rồi bật lại NGAY.
-                print("[CAPTURE] Đang quét WDA_EXCLUDEFROMCAPTURE...", flush=True)
-                unlocked = self._unlock_excluded_from_capture()
-                print(f"[CAPTURE] WDA quét xong: unlocked={bool(unlocked)}", flush=True)
-                self._temporarily_unlocked_windows = unlocked
-                try:
-                    try:
-                        print("[CAPTURE] Đang gọi ImageGrab.grab()...", flush=True)
-                        image = ImageGrab.grab()
-                        print("[CAPTURE] ImageGrab.grab() đã trả về.", flush=True)
-                    finally:
-                        print("[CAPTURE] Đang khôi phục WDA...", flush=True)
-                        self.restore_capture_protection_now()
-                        print("[CAPTURE] Đã khôi phục WDA.", flush=True)
-                except OSError as exc:
-                    raise ScreenCaptureBlockedError(
-                        f"Windows không cho phép chụp màn hình lúc này: {exc}"
-                    ) from exc
 
-                if image is None:
-                    raise ScreenCaptureBlockedError(
-                        "Windows trả về ảnh rỗng khi chụp màn hình."
-                    )
-                image = image.convert("RGB")
-                print("[CAPTURE] ImageGrab đã chụp xong.", flush=True)
+            # Đơn giản và đáng tin cậy: chỉ dùng ImageGrab để chụp toàn màn hình,
+            # rồi gửi ảnh cho Gemini. Không gọi WDA/PrintWindow/process injection
+            # vì các đường đó có thể treo hoặc làm ảnh hưởng app thi.
+            image = ImageGrab.grab()
+            print("[CAPTURE] ImageGrab.grab() đã trả về.", flush=True)
 
-                if self._is_black_screenshot(image):
-                    # WDA có thể được app bật lại ngay trước lúc chụp.
-                    # Thử thêm một lần, vẫn bật lại ngay sau khi chụp.
-                    unlocked = self._unlock_excluded_from_capture()
-                    self._temporarily_unlocked_windows = unlocked
-                    try:
-                        try:
-                            image = ImageGrab.grab()
-                        finally:
-                            self.restore_capture_protection_now()
-                    except OSError:
-                        image = None
-                    if image is not None:
-                        image = image.convert("RGB")
+            if image is None:
+                raise ScreenCaptureBlockedError(
+                    "Windows trả về ảnh rỗng khi chụp màn hình."
+                )
 
-            if image is None or self._is_black_screenshot(image):
+            image = image.convert("RGB")
+            print("[CAPTURE] ImageGrab đã chụp xong.", flush=True)
+
+            if self._is_black_screenshot(image):
                 raise ScreenCaptureBlockedError(
                     "Ảnh chụp bị đen hoàn toàn. Nội dung có thể đang bị Windows"
                     " chặn chụp (secure desktop, DRM, game hoặc video có bảo vệ)."
@@ -354,25 +321,17 @@ class GeminiHelper:
         if not self.available:
             return None
 
-        # Thử model chính trước, sau đó thử các model dự phòng nếu bị lỗi/bận.
-        # Giới hạn số lần thử để không chờ quá lâu khi nhiều model cùng bận.
-        models = []
-        for model in [self.model] + self.fallback_models:
-            if model and model not in models:
-                models.append(model)
-        models = models[: self.max_attempts]
+        # Chỉ dùng đúng model Gemini đã cấu hình. Không thử model khác,
+        # không thử cơ chế capture/API thay thế.
+        for attempt in range(1, self.retries_per_model + 1):
+            answer = self._generate_with_model(self.model, image_b64, detailed)
+            if answer is not None:
+                return answer
+            if attempt < self.retries_per_model:
+                print(f"[AI] Gemini '{self.model}' lần {attempt} không được, thử lại...")
+                time.sleep(0.6)
 
-        for model in models:
-            for attempt in range(1, self.retries_per_model + 1):
-                answer = self._generate_with_model(model, image_b64, detailed)
-                if answer is not None:
-                    return answer
-                if attempt < self.retries_per_model:
-                    print(f"[AI] Model '{model}' lần {attempt} không được, thử lại...")
-                    time.sleep(0.6)
-
-            print(f"[AI] Model '{model}' không trả được kết quả, thử model khác...")
-
+        print(f"[AI] Gemini '{self.model}' không trả được kết quả.")
         return None
 
     def _generate_with_model(

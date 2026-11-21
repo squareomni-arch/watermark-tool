@@ -427,9 +427,9 @@ class StealthHelperApp:
     def _show_answer(self, answer: Optional[str]) -> None:
         log(f"[AI] Hiển thị answer: {repr(answer)[:120]}")
         if answer == "__SCREEN_BLOCKED__":
-            self.overlay.show("Không chụp được màn hình (bị chặn)")
+            self.overlay.show("Không đọc được màn hình")
         elif answer is None:
-            self.overlay.show("Lỗi AI")
+            self.overlay.show("Lỗi đọc màn hình")
         elif answer.strip().upper().startswith("NO_QUESTION"):
             self.overlay.show("Không thấy câu hỏi")
         elif answer.strip().lower().startswith(("tôi là trợ lý", "tôi là ai", "tôi là gemini")):
