@@ -1,5 +1,5 @@
 {
-  "version": "1.1.55",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.55/watermark-tool-1.1.55.zip",
-  "notes": "Hien Đang đọc màn hình, an truoc capture, retry tim kiosk WDA truoc khi hien dap an"
+  "version": "1.1.56",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.56/watermark-tool-1.1.56.zip",
+  "notes": "Bo overlay.hide o worker thread gay treo AI; prompt Gemini bo qua watermark trang thai"
 }

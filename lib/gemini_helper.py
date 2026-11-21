@@ -38,6 +38,7 @@ MODE_DETAIL = "detail"
 
 DEFAULT_PROMPT = (
     "Ảnh chụp màn hình máy tính sẽ được cung cấp riêng."
+    " Trong ảnh có thể có một dòng chữ trạng thái ở góc màn hình; hãy bỏ qua nó."
     " Nhiệm vụ duy nhất của bạn: đọc văn bản TRONG ẢNH,"
     " không trả lời câu hỏi trong hướng dẫn này."
     " Nếu trong ảnh có câu hỏi hoặc bài tập điền từ/chỗ trống cần trả lời,"
@@ -49,6 +50,7 @@ DEFAULT_PROMPT = (
 
 DETAIL_PROMPT = (
     "Ảnh chụp màn hình máy tính được cung cấp riêng."
+    " Trong ảnh có thể có một dòng chữ trạng thái ở góc màn hình; hãy bỏ qua nó."
     " Hãy đọc TOÀN BỘ văn bản trong ảnh thật chính xác: cả phần bên trái"
     " (đoạn văn / passage) và phần bên phải (câu hỏi)."
     "\n\nNhiệm vụ: trả lời TẤT CẢ câu hỏi đang hiển thị trong ảnh.\n"

@@ -400,13 +400,8 @@ class StealthHelperApp:
     def _ai_worker(self) -> None:
         try:
             log("[AI] Worker đang chụp màn hình + gọi Gemini...")
-            # Ẩn overlay trước khi chụp để chữ trạng thái không lọt vào ảnh
-            # gửi Gemini. Sau khi có kết quả, _process_pending_answer sẽ show lại.
-            if self.overlay is not None and self.overlay.active:
-                try:
-                    self.overlay.hide()
-                except Exception:
-                    pass
+            # KHÔNG gọi overlay.hide() từ worker thread. Việc này có thể block
+            # UI và làm AI kẹt mãi ở trạng thái "Đang đọc màn hình...".
             answer = self.ai.answer_from_screen(self.detailed_mode)
             log(f"[AI] Worker xong. answer={'None' if answer is None else (answer[:60] + '...' if len(str(answer)) > 60 else answer)}")
         except ScreenCaptureBlockedError as exc:
