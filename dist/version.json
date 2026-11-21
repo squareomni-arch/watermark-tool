@@ -1,5 +1,5 @@
 {
-  "version": "1.1.39",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.39/watermark-tool-1.1.39.zip",
-  "notes": "Phat hien ExamLockdown bang process name de an overlay som; khong show lai top-level khi cua so/process moi xuat hien"
+  "version": "1.1.40",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.40/watermark-tool-1.1.40.zip",
+  "notes": "Them cau noi SSH de Mac tu dong doc log va chay lenh debug tren Windows cung LAN"
 }
