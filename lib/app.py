@@ -93,6 +93,8 @@ class StealthHelperApp:
         self._suppress_top_level_until = 0.0
         self._last_defensive_log = ""
         self._last_defensive_log_at = 0.0
+        self._last_exam_tick_log = ""
+        self._last_exam_tick_log_at = 0.0
 
     # ------------------------------------------------------------------ chạy
     def start(self) -> None:
@@ -422,10 +424,15 @@ class StealthHelperApp:
 
         ok = self.overlay.attach_to(exam_hwnd)
         parent = self._overlay_parent_hwnd()
-        _evade_log(
+        tick_line = (
             f"EXAM_TICK hwnd={exam_hwnd} pid={exam_pid} attach={ok} "
             f"child={self.overlay.is_child} getparent={parent} match={parent == exam_hwnd}"
         )
+        now_tick = time.monotonic()
+        if tick_line != self._last_exam_tick_log or now_tick - self._last_exam_tick_log_at >= 1.0:
+            self._last_exam_tick_log = tick_line
+            self._last_exam_tick_log_at = now_tick
+            _evade_log(tick_line)
         if ok:
             self._exam_attached = True
             self._exam_attach_ready.set()

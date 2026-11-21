@@ -346,9 +346,16 @@ class WatermarkOverlay:
                 return False
 
             self._parent_hwnd = int(parent_hwnd)
-            self._commit_layer()
-            if self.active:
-                self._show(None, None, self._multiline)
+
+            # Việc gắn child window đã thành công (GetParent khớp). Các lỗi vẽ
+            # lại layer sau đó không được coi là attach thất bại, nếu không
+            # watcher sẽ gọi lại mãi và bỏ lỡ cơ hội ẩn overlay.
+            try:
+                self._commit_layer()
+                if self.active:
+                    self._show(None, None, self._multiline)
+            except Exception:
+                pass
             return True
         except Exception:
             return False

@@ -1,5 +1,5 @@
 {
-  "version": "1.1.44",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.44/watermark-tool-1.1.44.zip",
-  "notes": "Phat hien ExamLockdown process -> attach ngay cua so preflight truoc khi strict scan"
+  "version": "1.1.45",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.45/watermark-tool-1.1.45.zip",
+  "notes": "Coi child attach thanh cong khi GetParent khop, giam log EXAM_TICK spam"
 }
