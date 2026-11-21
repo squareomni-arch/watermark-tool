@@ -206,11 +206,7 @@ class StealthHelperApp:
 
         try:
             from .exam_evasion import (
-                describe_visible_window,
-                find_fullscreen_candidate_window,
                 find_processes_by_names,
-                get_foreground_window,
-                get_process_name,
                 list_all_pids,
             )
         except Exception as exc:
@@ -228,9 +224,7 @@ class StealthHelperApp:
         except Exception as exc:
             _evade_log(f"WATCHER_PID_BASELINE_FAILED {exc!r}")
 
-        last_exam_pid: Optional[int] = None
         last_heartbeat_log = 0.0
-        last_fallback_scan = 0.0
 
         while self._running:
             try:
@@ -255,9 +249,9 @@ class StealthHelperApp:
                 except Exception as exc:
                     _evade_log(f"NEW_PROCESS_CHECK_FAILED {exc!r}")
 
-                # 2) Process-name detection: chỉ để ẩn phòng thủ, KHÔNG attach
-                # vào cửa sổ preflight. Attach quá sớm làm WPF/ExamLockdown
-                # có thể bị "Not Responding" và hỏng submit.
+                # 2) Process-name detection: chỉ để ẩn phòng thủ. KHÔNG attach
+                # tại watcher; việc attach chỉ xảy ra khi bật CapsLock và cửa
+                # sổ đã vào kiosk WDA (xem _find_current_exam_window).
                 exam_procs = find_processes_by_names(
                     self._exam_process_names | self._learned_exam_names
                 )
@@ -266,51 +260,7 @@ class StealthHelperApp:
                         self._exam_process_seen = True
                         _evade_log("EXAM_PROCESS_SEEN " + repr(exam_procs))
                     self._suppress_top_level_until = now + 2.0
-
-                # 3) Attach candidate theo behavior kiosk: WPF/WDA foreground,
-                # hoặc fullscreen WPF/WDA. Đây là lúc ExamLockdown đã ổn định,
-                # an toàn để gắn watermark thành child window.
-                attach_candidate = None
-
-                fg = get_foreground_window()
-                if fg is not None:
-                    fg_hwnd, fg_pid, fg_reason = fg
-                    info = describe_visible_window(fg_hwnd) or {}
-                    class_lower = str(info.get("class", "")).lower()
-                    if (
-                        info.get("wda") == 0x00000011
-                        or class_lower.startswith("hwndwrapper")
-                    ):
-                        attach_candidate = (fg_hwnd, fg_pid, "foreground:" + fg_reason)
-
-                if attach_candidate is None and now - last_fallback_scan >= 0.8:
-                    last_fallback_scan = now
-                    defensive = find_fullscreen_candidate_window()
-                    if defensive is not None:
-                        attach_candidate = (
-                            defensive[0],
-                            defensive[1],
-                            "fullscreen:" + defensive[2],
-                        )
-
-                if attach_candidate is not None:
-                    hwnd, pid, reason = attach_candidate
-                    learned = get_process_name(pid)
-                    if learned:
-                        self._learned_exam_names.add(learned.lower())
-                    if hwnd and (pid != last_exam_pid or not self._exam_attached):
-                        self._handle_exam_found((hwnd, pid, reason), source="BEHAVIOR")
-                        last_exam_pid = pid
-                else:
-                    if last_exam_pid is not None:
-                        last_exam_pid = None
-                        _evade_log("EXAM_GONE")
-                        log("[EVADE] App thi đã thoát, trả watermark về chế độ thường.")
-                    with self._exam_target_lock:
-                        self._exam_target = None
-                    self._exam_attach_ready.clear()
-
-                if not exam_procs and self._exam_process_seen:
+                elif self._exam_process_seen:
                     self._exam_process_seen = False
                     _evade_log("EXAM_PROCESS_GONE")
 
@@ -527,16 +477,28 @@ class StealthHelperApp:
             log("[AI] Chưa gắn được child window, chưa hiển thị.")
 
     def _find_current_exam_window(self):
-        """Trả về (hwnd, pid, reason) nếu app thi đang ở chế độ kiosk.
+        """Trả về (hwnd, pid, reason) nếu app thi đang ở chế độ kiosk WDA.
 
-        KHÔNG dò theo process name ở đây. Nếu attach vào cửa sổ preflight,
-        ExamLockdown có thể bị "Not Responding" và hỏng submit. Chỉ attach
-        khi đã thấy tín hiệu kiosk (WDA/fullscreen WPF).
+        Chỉ dò theo process name rồi kiểm tra đúng HWND đó có bật
+        WDA_EXCLUDEFROMCAPTURE hay không. Không EnumWindows toàn hệ thống,
+        tránh treo khi ExamLockdown Not Responding. Cũng không attach vào
+        cửa sổ preflight (chưa WDA).
         """
         try:
-            from .exam_evasion import find_exam_window
+            from .exam_evasion import find_processes_by_names, find_window_for_process
+            from .wda_unlock import get_window_affinity
 
-            return find_exam_window()
+            procs = find_processes_by_names(
+                self._exam_process_names | self._learned_exam_names
+            )
+            for name, pid in procs.items():
+                hwnd = find_window_for_process(pid)
+                if not hwnd:
+                    continue
+                affinity = get_window_affinity(hwnd)
+                if affinity == 0x00000011:  # WDA_EXCLUDEFROMCAPTURE
+                    return hwnd, pid, f"kiosk_wda:{name}"
+            return None
         except Exception:
             return None
 
