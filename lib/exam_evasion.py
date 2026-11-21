@@ -218,6 +218,27 @@ def find_process_by_name(process_name: str) -> Optional[int]:
         KERNEL32.CloseHandle(snapshot)
 
 
+def list_all_pids() -> List[int]:
+    """Liệt kê mọi PID hiện tại bằng Toolhelp snapshot."""
+    snapshot = KERNEL32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if not snapshot:
+        return []
+
+    pids: List[int] = []
+    try:
+        entry = PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        if not KERNEL32.Process32FirstW(snapshot, ctypes.byref(entry)):
+            return pids
+        while True:
+            pids.append(int(entry.th32ProcessID))
+            if not KERNEL32.Process32NextW(snapshot, ctypes.byref(entry)):
+                break
+        return pids
+    finally:
+        KERNEL32.CloseHandle(snapshot)
+
+
 def get_process_name(pid: int) -> str:
     """Đọc tên exe của process theo PID. Không mở handle nếu không cần."""
     if pid <= 0:
