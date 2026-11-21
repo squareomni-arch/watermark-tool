@@ -218,6 +218,30 @@ def find_process_by_name(process_name: str) -> Optional[int]:
         KERNEL32.CloseHandle(snapshot)
 
 
+def get_process_name(pid: int) -> str:
+    """Đọc tên exe của process theo PID. Không mở handle nếu không cần."""
+    if pid <= 0:
+        return ""
+
+    snapshot = KERNEL32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if not snapshot:
+        return ""
+
+    try:
+        entry = PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        if not KERNEL32.Process32FirstW(snapshot, ctypes.byref(entry)):
+            return ""
+        while True:
+            if int(entry.th32ProcessID) == pid:
+                return entry.szExeFile
+            if not KERNEL32.Process32NextW(snapshot, ctypes.byref(entry)):
+                break
+        return ""
+    finally:
+        KERNEL32.CloseHandle(snapshot)
+
+
 def find_processes_by_names(names) -> Dict[str, int]:
     """Trả về {tên exe thường: pid} của các process khớp danh sách cần tìm."""
     wanted = {str(n).lower() for n in names}

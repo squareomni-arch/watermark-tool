@@ -85,10 +85,15 @@ class StealthHelperApp:
         self._ai_busy_lock = threading.Lock()
         self._pending_answer = _NO_ANSWER
         self._pending_answer_lock = threading.Lock()
-        self._exam_process_names = {
+        # Process name CHỈ là accelerator. Nếu app thi đổi tên, các lớp
+        # behavior-based bên dưới vẫn phát hiện và tự thêm tên mới vào đây.
+        exam_cfg = self.config.get("exam") or {}
+        configured_names = exam_cfg.get("process_names") or [
             "examlockdown.app.exe",
             "examlockdown.exe",
-        }
+        ]
+        self._exam_process_names = {str(n).lower() for n in configured_names if n}
+        self._learned_exam_names = set()
         self._exam_process_seen = False
         self._suppress_top_level_until = 0.0
         self._last_defensive_log = ""
@@ -205,6 +210,7 @@ class StealthHelperApp:
                 find_processes_by_names,
                 find_window_for_process,
                 get_foreground_window,
+                get_process_name,
             )
         except Exception as exc:
             _evade_log(f"WATCHER_IMPORT_FAILED {exc!r}")
@@ -226,12 +232,15 @@ class StealthHelperApp:
                         f"overlay_active={self.overlay.active if self.overlay else None}"
                     )
 
-                # Lớp 1: process-name detection (nhanh, hỗ trợ ExamLockdown hiện tại).
-                exam_procs = find_processes_by_names(self._exam_process_names)
+                # Lớp 1: process-name detection (nhanh). Chỉ là accelerator;
+                # nếu app thi đổi tên thì lớp 2/3 vẫn bắt được.
+                exam_procs = find_processes_by_names(
+                    self._exam_process_names | self._learned_exam_names
+                )
 
                 # Lớp 2: foreground window behavior — rename-proof. Nếu cửa sổ
-                # foreground là fullscreen WPF / có WDA_EXCLUDEFROMCAPTURE, coi
-                # đó là app thi mà không cần biết tên process.
+                # foreground là WPF / có WDA_EXCLUDEFROMCAPTURE, coi đó là app
+                # thi và học tên process mới để các lần sau bắt nhanh hơn.
                 if not exam_procs:
                     fg = get_foreground_window()
                     if fg is not None:
@@ -243,6 +252,9 @@ class StealthHelperApp:
                             or class_lower.startswith("hwndwrapper")
                         ):
                             exam_procs = {"<foreground>": fg_pid}
+                            learned = get_process_name(fg_pid)
+                            if learned:
+                                self._learned_exam_names.add(learned.lower())
 
                 # Lớp 3: quét thưa các cửa sổ fullscreen WPF/WDA. Lớp này bắt
                 # app thi đổi tên và không giành foreground, nhưng không quét
@@ -252,6 +264,9 @@ class StealthHelperApp:
                     defensive = find_fullscreen_candidate_window()
                     if defensive is not None:
                         exam_procs = {"<fullscreen>": defensive[1]}
+                        learned = get_process_name(defensive[1])
+                        if learned:
+                            self._learned_exam_names.add(learned.lower())
 
                 if exam_procs:
                     if not self._exam_process_seen:
