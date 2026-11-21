@@ -236,24 +236,14 @@ class StealthHelperApp:
                         f"overlay_active={self.overlay.active if self.overlay else None}"
                     )
 
-                # 1) Đánh dấu ẩn overlay khi có process mới xuất hiện.
-                # KHÔNG gọi overlay.hide() tại watcher thread: ShowWindow có
-                # thể block nếu overlay đang ở trạng thái chuyển đổi.
-                try:
-                    current_pids = set(list_all_pids())
-                    new_pids = current_pids - self._known_pids
-                    if new_pids:
-                        self._known_pids = current_pids
-                        _evade_log(f"NEW_PROCESS_SEEN pids={sorted(new_pids)[:8]}")
-                        with self._defensive_hide_lock:
-                            self._defensive_hide_pending = True
-                        self._suppress_top_level_until = now + 2.0
-                except Exception as exc:
-                    _evade_log(f"NEW_PROCESS_CHECK_FAILED {exc!r}")
+                # KHÔNG dùng "process mới bất kỳ" để ẩn/hủy hiển thị vì Windows
+                # liên tục sinh process nền, làm tool tưởng đang có app thi và
+                # không bao giờ hiện đáp án.
 
-                # 2) Process-name detection: chỉ đánh dấu ẩn phòng thủ. KHÔNG
-                # attach tại watcher; attach chỉ khi bật CapsLock và cửa sổ đã
-                # vào kiosk WDA (xem _find_current_exam_window).
+                # Chỉ dùng process name của ExamLockdown (hoặc tên đã học).
+                # Nếu app thi đổi tên, lớp behavior vẫn bắt ở thời điểm bật
+                # CapsLock qua _find_current_exam_window; không cần phỏng đoán
+                # bằng mọi process mới.
                 exam_procs = find_processes_by_names(
                     self._exam_process_names | self._learned_exam_names
                 )

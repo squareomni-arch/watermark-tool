@@ -1,5 +1,5 @@
 {
-  "version": "1.1.53",
-  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.53/watermark-tool-1.1.53.zip",
-  "notes": "Khong goi overlay.hide o watcher thread; chi set pending de main thread an, tranh hang"
+  "version": "1.1.54",
+  "download_url": "https://github.com/squareomni-arch/watermark-tool/releases/download/v1.1.54/watermark-tool-1.1.54.zip",
+  "notes": "Bo phong doan process moi bat ky gay chan hien thi; chi an khi thay process ExamLockdown"
 }
